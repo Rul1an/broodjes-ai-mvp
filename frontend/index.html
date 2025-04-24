@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="nl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Broodjes AI MVP</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <h1>Broodjes Recept Generator</h1>
+
+    <div class="input-area">
+        <label for="broodje-idee">Voer je broodjesidee in:</label>
+        <input type="text" id="broodje-idee" placeholder="bv. Broodje pittige kip met avocado">
+        <button id="generate-btn">Genereer Recept</button>
+    </div>
+
+    <div id="resultaat-area">
+        <h2>Gegenereerd Recept:</h2>
+        <div id="loading" style="display: none;">Bezig met genereren...</div>
+        <pre id="recept-output"></pre> <!-- Using <pre> to preserve formatting -->
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
