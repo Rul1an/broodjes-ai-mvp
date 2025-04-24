@@ -4,8 +4,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const recipeOutput = document.getElementById('recept-output');
     const loadingIndicator = document.getElementById('loading');
 
-    // Set the backend URL (ensure the backend is running on this port)
-    const backendUrl = 'http://127.0.0.1:5001/generate';
+    // Set the API endpoint URL
+    // Netlify function will handle the API call securely
+    const apiUrl = '/api/generate';
 
     generateBtn.addEventListener('click', async () => {
         const idea = ideaInput.value.trim();
@@ -20,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
         generateBtn.disabled = true; // Disable button during request
 
         try {
-            const response = await fetch(backendUrl, {
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
