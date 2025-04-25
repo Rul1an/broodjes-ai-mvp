@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="nl">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Broodjes AI MVP</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <h1>Broodjes Recept Generator</h1>
 
@@ -21,6 +23,17 @@
         <pre id="recept-output"></pre> <!-- Using <pre> to preserve formatting -->
     </div>
 
+    <hr> <!-- Add a visual separator -->
+
+    <div id="opgeslagen-recepten-area">
+        <h2>Opgeslagen Recepten</h2>
+        <div id="loading-list" style="display: none;">Recepten laden...</div>
+        <ul id="recepten-lijst">
+            <!-- Recepten worden hier dynamisch ingeladen -->
+        </ul>
+    </div>
+
     <script src="script.js"></script>
 </body>
+
 </html>

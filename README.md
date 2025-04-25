@@ -1,6 +1,6 @@
 # Broodjes AI MVP
 
-Dit is een Minimum Viable Product (MVP) voor een applicatie die AI (OpenAI GPT) gebruikt om broodjesrecepten te genereren.
+Dit is een Minimum Viable Product (MVP) voor een applicatie die AI (OpenAI GPT) gebruikt om broodjesrecepten te genereren en deze opslaat in een Supabase database.
 
 ## Lokale Setup
 
@@ -20,11 +20,13 @@ Dit is een Minimum Viable Product (MVP) voor een applicatie die AI (OpenAI GPT) 
         ```bash
         pip install -r requirements.txt
         ```
-    *   Maak een `.env` bestand in de `backend` map. Kopieer de inhoud van `.env.example` (als die bestaat) of voeg de volgende regel toe en vervang de placeholder met je daadwerkelijke OpenAI API key:
+    *   Maak een `.env` bestand in de `backend` map. Kopieer de inhoud van `.env.example` (als die bestaat) of voeg de volgende regels toe en vervang de placeholders met je daadwerkelijke OpenAI API key en Supabase URL:
         ```
-        OPENAI_API_KEY='jouw_openai_api_key_hier'
+        OPENAI_API_KEY='jouw_openai_api_key'
+        SUPABASE_URL='jouw_supabase_url'
+        SUPABASE_ANON_KEY='jouw_supabase_anon_key'
         ```
-        **BELANGRIJK:** Voeg `.env` toe aan je `.gitignore` bestand als je dit project met Git beheert om te voorkomen dat je je API key per ongeluk publiceert.
+        **BELANGRIJK:** Voeg `.env` toe aan je `.gitignore` bestand als je dit project met Git beheert om te voorkomen dat je je API keys per ongeluk publiceert.
 
 3.  **Frontend Setup:**
     *   Er is geen speciale setup nodig voor de frontend, behalve het openen van het `index.html` bestand.
@@ -50,29 +52,53 @@ Dit is een Minimum Viable Product (MVP) voor een applicatie die AI (OpenAI GPT) 
 
 ## Deployment op Netlify (Aanbevolen voor Hosting)
 
-Je kunt deze app eenvoudig en gratis hosten op Netlify, waarbij de frontend statisch gehost wordt en de API-aanroepen gebeuren via een serverless function:
+Je kunt deze app eenvoudig en gratis hosten op Netlify, waarbij de frontend statisch gehost wordt en de API-aanroepen en database-interacties gebeuren via serverless functions:
 
-1. **Lokaal testen met Netlify CLI:**
-   ```bash
-   npm install              # Installeer dependencies
-   npm install -g netlify-cli # Installeer Netlify CLI
-   netlify login            # Log in op je Netlify account
-   netlify dev              # Start lokale ontwikkelomgeving
-   ```
+1.  **Supabase Project Opzetten (Vereist):**
+    *   Ga naar [Supabase](https://supabase.com/) en maak een gratis account aan.
+    *   Maak een nieuw project aan.
+    *   Ga naar de "SQL Editor" in je Supabase project dashboard.
+    *   Voer het volgende SQL statement uit om de `recipes` tabel aan te maken:
+        ```sql
+        CREATE TABLE recipes (
+          id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+          idea TEXT,
+          generated_recipe TEXT,
+          -- Voeg hier later kolommen toe voor geschatte/werkelijke kosten etc.
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        ```
+    *   Ga naar "Project Settings" -> "API". Noteer je **Project URL** en je **anon public** API key. Deze heb je nodig voor Netlify.
 
-2. **Site Deployment:**
-   * Fork/Clone dit project naar je eigen GitHub repository.
-   * Ga naar [Netlify](https://app.netlify.com/) en maak een nieuw account aan als je die nog niet hebt.
-   * Klik op "New site from Git" en kies je GitHub repository.
-   * Verifieer dat de build-instellingen overeenkomen met de instellingen in `netlify.toml`:
-     * Build command: (leeg laten of eventueel `npm run build` als je build-stappen toevoegt)
-     * Publish directory: `frontend`
-   * In "Advanced build settings", voeg je OpenAI API key toe als omgevingsvariabele:
-     * Key: `OPENAI_API_KEY`
-     * Value: [jouw OpenAI API key]
-   * Klik op "Deploy site".
+2.  **Lokaal testen met Netlify CLI:**
+    *   Zorg dat je de environment variables lokaal beschikbaar hebt (bv. via een `.env` bestand in de root, die in `.gitignore` staat!):
+        ```
+        OPENAI_API_KEY=jouw_openai_key
+        SUPABASE_URL=jouw_supabase_url
+        SUPABASE_ANON_KEY=jouw_supabase_anon_key
+        ```
+    *   Voer de commando's uit:
+        ```bash
+        npm install              # Installeer dependencies (incl. supabase-js)
+        npm install -g netlify-cli # Installeer Netlify CLI (indien nog niet gedaan)
+        netlify login            # Log in op je Netlify account
+        netlify dev              # Start lokale ontwikkelomgeving (leest .env)
+        ```
 
-3. **Na de Deployment:**
-   * Je app is nu live op de URL die Netlify je geeft (bv. `https://jouw-app-naam.netlify.app`).
-   * De frontend communiceert met de serverless function op `/api/generate`, die op zijn beurt communiceert met de OpenAI API.
-   * Je API key is veilig opgeslagen als environment variable in Netlify, niet zichtbaar in de frontend code.
+3.  **Site Deployment op Netlify:**
+    *   Fork/Clone dit project naar je eigen GitHub repository (als je dat nog niet gedaan hebt).
+    *   Ga naar [Netlify](https://app.netlify.com/) en maak een nieuw account aan als je die nog niet hebt.
+    *   Klik op "New site from Git" en kies je GitHub repository.
+    *   Verifieer dat de build-instellingen overeenkomen met de instellingen in `netlify.toml`:
+        *   Build command: (leeg laten)
+        *   Publish directory: `frontend`
+    *   In "Advanced build settings", voeg **alle drie** de environment variables toe:
+        *   Key: `OPENAI_API_KEY`, Value: [jouw OpenAI API key]
+        *   Key: `SUPABASE_URL`, Value: [jouw Supabase Project URL]
+        *   Key: `SUPABASE_ANON_KEY`, Value: [jouw Supabase anon public key]
+    *   Klik op "Deploy site".
+
+4.  **Na de Deployment:**
+    *   Je app is nu live op de URL die Netlify je geeft.
+    *   Nieuw gegenereerde recepten worden opgeslagen in je Supabase database en de lijst wordt bijgewerkt.
+    *   API keys zijn veilig opgeslagen als environment variables in Netlify.
