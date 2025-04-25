@@ -24,6 +24,13 @@
             <div class="input-area">
                 <label for="broodje-idee">Voer je broodjesidee in:</label>
                 <input type="text" id="broodje-idee" placeholder="bv. Broodje pittige kip met avocado">
+
+                <label for="model-select" style="margin-left: 10px;">Kies Model:</label>
+                <select id="model-select">
+                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                </select>
+
                 <button id="generate-btn">Genereer Recept</button>
             </div>
             <div id="resultaat-area">
@@ -36,40 +43,42 @@
 
         <!-- View 2: Saved Recipes -->
         <div id="view-recipes" class="view">
-             <h2>Opgeslagen Recepten</h2>
-             <div id="loading-list" style="display: none;">Recepten laden...</div>
-             <ul id="recepten-lijst">
-                 <!-- Recepten worden hier dynamisch ingeladen -->
-             </ul>
-             <button id="clear-recipes-btn" style="margin-top: 20px; background-color: #dc3545;">Alle Recepten Verwijderen</button>
+            <h2>Opgeslagen Recepten</h2>
+            <div id="loading-list" style="display: none;">Recepten laden...</div>
+            <ul id="recepten-lijst">
+                <!-- Recepten worden hier dynamisch ingeladen -->
+            </ul>
+            <button id="clear-recipes-btn" style="margin-top: 20px; background-color: #dc3545;">Alle Recepten
+                Verwijderen</button>
         </div>
 
         <!-- View 3: Ingredient Management -->
         <div id="view-ingredients" class="view">
             <h2>Ingrediënten Beheer (Prijzen invoeren)</h2>
             <div id="add-ingredient-form">
-                 <h3>Nieuw Ingrediënt Toevoegen</h3>
-                 <input type="text" id="ingredient-name" placeholder="Naam (bv. Gerookte Kip)" required>
-                 <input type="text" id="ingredient-unit" placeholder="Eenheid (bv. kg)" required>
-                 <input type="number" id="ingredient-price" placeholder="Prijs per eenheid (bv. 15.50)" step="0.01" required>
-                 <button id="add-ingredient-btn">Toevoegen</button>
-                 <p id="ingredient-feedback" style="color: green; display: none;"></p>
+                <h3>Nieuw Ingrediënt Toevoegen</h3>
+                <input type="text" id="ingredient-name" placeholder="Naam (bv. Gerookte Kip)" required>
+                <input type="text" id="ingredient-unit" placeholder="Eenheid (bv. kg)" required>
+                <input type="number" id="ingredient-price" placeholder="Prijs per eenheid (bv. 15.50)" step="0.01"
+                    required>
+                <button id="add-ingredient-btn">Toevoegen</button>
+                <p id="ingredient-feedback" style="color: green; display: none;"></p>
             </div>
             <h3>Bestaande Ingrediënten</h3>
             <div id="loading-ingredients" style="display: none;">Ingrediënten laden...</div>
             <table id="ingredienten-tabel">
-                 <thead>
-                     <tr>
-                         <th>Naam</th>
-                         <th>Eenheid</th>
-                         <th>Prijs per Eenheid (€)</th>
-                         <th>Acties</th>
-                     </tr>
-                 </thead>
-                 <tbody>
-                     <!-- Ingrediënten worden hier dynamisch ingeladen -->
-                 </tbody>
-             </table>
+                <thead>
+                    <tr>
+                        <th>Naam</th>
+                        <th>Eenheid</th>
+                        <th>Prijs per Eenheid (€)</th>
+                        <th>Acties</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Ingrediënten worden hier dynamisch ingeladen -->
+                </tbody>
+            </table>
         </div>
     </main>
 

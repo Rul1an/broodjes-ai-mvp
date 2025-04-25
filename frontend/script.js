@@ -18,9 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearRecipesBtn = document.getElementById('clear-recipes-btn');
     const navigationButtons = document.querySelectorAll('.nav-button');
     const views = document.querySelectorAll('.view');
-
-    console.log('Script start: generateBtn element:', document.getElementById('generate-btn')); // Log 1: Check if element exists at start
-    console.log('Script start: generateBtn variable:', generateBtn); // Log 2: Check variable value after assignment
+    const modelSelect = document.getElementById('model-select');
 
     // API Endpoints
     const generateApiUrl = '/api/generate';
@@ -327,62 +325,61 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Generate button event listener
-    console.log('Before adding listener: generateBtn variable:', generateBtn); // Log 3: Check variable value just before listener
-    try {
-        generateBtn.addEventListener('click', async () => {
-            const idea = ideaInput.value.trim();
-            if (!idea) {
-                alert('Voer alsjeblieft een broodjesidee in.');
-                return;
+    generateBtn.addEventListener('click', async () => {
+        const idea = ideaInput.value.trim();
+        const selectedModel = modelSelect.value;
+
+        if (!idea) {
+            alert('Voer alsjeblieft een broodjesidee in.');
+            return;
+        }
+
+        recipeOutput.textContent = '';
+        estimatedCostOutput.textContent = '';
+        loadingIndicator.style.display = 'block';
+        generateBtn.disabled = true;
+
+        try {
+            const response = await fetch(generateApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    idea: idea,
+                    model: selectedModel
+                })
+            });
+
+            if (!response.ok) {
+                let errorMsg = `Fout: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorMsg;
+                } catch (e) { }
+                throw new Error(errorMsg);
             }
 
-            recipeOutput.textContent = '';
+            const data = await response.json();
+            recipeOutput.textContent = data.recipe;
+
+            // --- Display Estimated Cost ---
+            if (data.estimated_cost !== null && data.estimated_cost !== undefined) {
+                estimatedCostOutput.textContent = `Geschatte Totale Kosten (AI): €${data.estimated_cost.toFixed(2)}`;
+            } else {
+                estimatedCostOutput.textContent = 'Kon geen kosten schatten.';
+            }
+            // ---------------------------
+
+            loadRecipes();
+
+        } catch (error) {
+            console.error('Error generating recipe:', error);
+            recipeOutput.textContent = `Kon het recept niet genereren: ${error.message}`;
             estimatedCostOutput.textContent = '';
-            loadingIndicator.style.display = 'block';
-            generateBtn.disabled = true;
-
-            try {
-                const response = await fetch(generateApiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ idea: idea })
-                });
-
-                if (!response.ok) {
-                    let errorMsg = `Fout: ${response.status}`;
-                    try {
-                        const errorData = await response.json();
-                        errorMsg = errorData.error || errorMsg;
-                    } catch (e) { }
-                    throw new Error(errorMsg);
-                }
-
-                const data = await response.json();
-                recipeOutput.textContent = data.recipe;
-
-                // --- Display Estimated Cost ---
-                if (data.estimated_cost !== null && data.estimated_cost !== undefined) {
-                    estimatedCostOutput.textContent = `Geschatte Totale Kosten (AI): €${data.estimated_cost.toFixed(2)}`;
-                } else {
-                    estimatedCostOutput.textContent = 'Kon geen kosten schatten.';
-                }
-                // ---------------------------
-
-                loadRecipes();
-
-            } catch (error) {
-                console.error('Error generating recipe:', error);
-                recipeOutput.textContent = `Kon het recept niet genereren: ${error.message}`;
-                estimatedCostOutput.textContent = '';
-            } finally {
-                loadingIndicator.style.display = 'none';
-                generateBtn.disabled = false;
-            }
-        });
-    } catch (e) {
-        console.error("Error adding event listener to generateBtn:", e); // Log 4: Catch potential error during listener addition
-        console.error("Value of generateBtn when error occurred:", generateBtn);
-    }
+        } finally {
+            loadingIndicator.style.display = 'none';
+            generateBtn.disabled = false;
+        }
+    });
 
     // Optional: Allow pressing Enter
     ideaInput.addEventListener('keypress', (event) => {

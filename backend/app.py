@@ -20,13 +20,29 @@ except Exception as e:
     client = None
 
 
-@app.route('/generate', methods=['POST'])
+@app.route('/api/generate', methods=['POST'])
 def generate_recipe():
     if not client:
         return jsonify({"error": "OpenAI client not initialized. Check API key."}), 500
 
     data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON data"}), 400
+
     idea = data.get('idea')
+    # Get model from request, default to gpt-3.5-turbo if not provided
+    requested_model = data.get('model', 'gpt-3.5-turbo')
+
+    # Basic validation for allowed models (optional but recommended)
+    allowed_models = ['gpt-3.5-turbo', 'gpt-4o']
+    if requested_model not in allowed_models:
+        # You might want to log this or return a more specific error
+        # For now, we default back to 3.5-turbo
+        print(
+            f"Warning: Received unsupported model '{requested_model}', defaulting to gpt-3.5-turbo.")
+        model_to_use = 'gpt-3.5-turbo'
+    else:
+        model_to_use = requested_model
 
     if not idea:
         return jsonify({"error": "No idea provided"}), 400
@@ -48,14 +64,17 @@ def generate_recipe():
                     "content": prompt,
                 }
             ],
-            model="gpt-3.5-turbo",  # Or use gpt-4 if available/preferred
+            model=model_to_use,  # <-- Use the selected model
         )
 
         recipe = chat_completion.choices[0].message.content
-        return jsonify({"recipe": recipe})
+        # TODO: Consider adding cost estimation logic here if needed
+        # For now, just return the recipe
+        # Return None for cost for now
+        return jsonify({"recipe": recipe, "estimated_cost": None})
 
     except Exception as e:
-        print(f"Error calling OpenAI API: {e}")
+        print(f"Error calling OpenAI API with model {model_to_use}: {e}")
         return jsonify({"error": "Failed to generate recipe"}), 500
 
 
