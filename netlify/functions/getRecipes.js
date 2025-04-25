@@ -26,10 +26,10 @@ exports.handler = async function(event, context) {
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Fetch all recipes from the 'recipes' table, ordered by creation time descending
+    // Fetch recipes, including the estimated cost
     const { data: recipes, error } = await supabase
       .from('recipes')
-      .select('id, idea, generated_recipe, created_at') // Select specific columns
+      .select('id, idea, generated_recipe, created_at, estimated_total_cost') // Added estimated_total_cost
       .order('created_at', { ascending: false });
 
     if (error) {

@@ -95,6 +95,11 @@ Je kunt deze app eenvoudig en gratis hosten op Netlify, waarbij de frontend stat
         FOR EACH ROW
         EXECUTE FUNCTION trigger_set_timestamp();
         ```
+    *   **BELANGRIJK (Update):** Als je de `recipes` tabel al had aangemaakt, voer dan het volgende SQL statement uit om de kolom voor geschatte kosten toe te voegen:
+        ```sql
+        ALTER TABLE recipes
+        ADD COLUMN estimated_total_cost NUMERIC(10, 2); -- Kolom voor geschatte totale kosten (bv. 2.75)
+        ```
     *   Ga naar "Project Settings" -> "API". Noteer je **Project URL** en je **anon public** API key. Deze heb je nodig voor Netlify.
 
 2.  **Lokaal testen met Netlify CLI:**
