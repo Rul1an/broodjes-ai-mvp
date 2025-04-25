@@ -60,6 +60,7 @@ Je kunt deze app eenvoudig en gratis hosten op Netlify, waarbij de frontend stat
     *   Ga naar de "SQL Editor" in je Supabase project dashboard.
     *   Voer het volgende SQL statement uit om de `recipes` tabel aan te maken:
         ```sql
+        -- Tabel voor opgeslagen recepten
         CREATE TABLE recipes (
           id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
           idea TEXT,
@@ -67,6 +68,32 @@ Je kunt deze app eenvoudig en gratis hosten op Netlify, waarbij de frontend stat
           -- Voeg hier later kolommen toe voor geschatte/werkelijke kosten etc.
           created_at TIMESTAMPTZ DEFAULT NOW()
         );
+        ```
+    *   Voer **vervolgens** dit SQL statement uit om de `ingredients` tabel aan te maken:
+        ```sql
+        -- Tabel voor ingrediënten met prijzen
+        CREATE TABLE ingredients (
+            id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            name TEXT NOT NULL UNIQUE, -- Ingredient naam (uniek)
+            unit TEXT NOT NULL, -- Eenheid (bv. kg, liter, stuk, gram)
+            price_per_unit NUMERIC(10, 4) NOT NULL, -- Prijs per eenheid (bv. 12.5000)
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        -- Optioneel: Trigger om updated_at automatisch bij te werken
+        CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = NOW();
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+
+        CREATE TRIGGER set_timestamp
+        BEFORE UPDATE ON ingredients
+        FOR EACH ROW
+        EXECUTE FUNCTION trigger_set_timestamp();
         ```
     *   Ga naar "Project Settings" -> "API". Noteer je **Project URL** en je **anon public** API key. Deze heb je nodig voor Netlify.
 

@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Existing Recipe Generation Elements ---
     const generateBtn = document.getElementById('generate-btn');
     const ideaInput = document.getElementById('broodje-idee');
     const recipeOutput = document.getElementById('recept-output');
@@ -6,13 +7,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingListIndicator = document.getElementById('loading-list');
     const recipeList = document.getElementById('recepten-lijst');
 
-    // API Endpoints
-    const generateApiUrl = '/api/generate'; 
-    const getRecipesApiUrl = '/api/getRecipes';
+    // --- New Ingredient Management Elements ---
+    const ingredientNameInput = document.getElementById('ingredient-name');
+    const ingredientUnitInput = document.getElementById('ingredient-unit');
+    const ingredientPriceInput = document.getElementById('ingredient-price');
+    const addIngredientBtn = document.getElementById('add-ingredient-btn');
+    const ingredientFeedback = document.getElementById('ingredient-feedback');
+    const loadingIngredientsIndicator = document.getElementById('loading-ingredients');
+    const ingredientTableBody = document.querySelector('#ingredienten-tabel tbody');
 
-    // Function to fetch and display recipes
-    const loadRecipes = async () => {
-        loadingListIndicator.style.display = 'block';
+    // API Endpoints
+    const generateApiUrl = '/api/generate';
+    const getRecipesApiUrl = '/api/getRecipes';
+    const getIngredientsApiUrl = '/api/getIngredients';
+    const addIngredientApiUrl = '/api/addIngredient';
+    const updateIngredientApiUrl = '/api/updateIngredient';
+    const deleteIngredientApiUrl = '/api/deleteIngredient';
+
+    // --- Function to fetch and display recipes (Existing) ---
+    const loadRecipes = async () => { 
+         loadingListIndicator.style.display = 'block';
         recipeList.innerHTML = ''; // Clear existing list
 
         try {
@@ -22,13 +36,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const errorData = await response.json();
                     errorMsg = errorData.error || errorMsg;
-                } catch (e) {}
+                } catch (e) { }
                 throw new Error(errorMsg);
             }
             const data = await response.json();
-            
+
             if (data.recipes && data.recipes.length > 0) {
-                 data.recipes.forEach(recipe => {
+                data.recipes.forEach(recipe => {
                     const listItem = document.createElement('li');
                     // Displaying idea and maybe a snippet or date
                     listItem.innerHTML = `<b>${recipe.idea || 'Onbekend Idee'}</b> <br> <small>Opgeslagen op: ${new Date(recipe.created_at).toLocaleString()}</small> <details><summary>Bekijk Recept</summary><pre>${recipe.generated_recipe || 'Geen recept data'}</pre></details>`;
@@ -46,9 +60,137 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Generate button event listener
-    generateBtn.addEventListener('click', async () => {
-        const idea = ideaInput.value.trim();
+    // --- Functions for Ingredient Management ---
+    const loadIngredients = async () => {
+        loadingIngredientsIndicator.style.display = 'block';
+        ingredientTableBody.innerHTML = ''; // Clear existing table body
+
+        try {
+            const response = await fetch(getIngredientsApiUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+
+            if (data.ingredients && data.ingredients.length > 0) {
+                data.ingredients.forEach(ingredient => {
+                    const row = ingredientTableBody.insertRow();
+                    row.innerHTML = `
+                        <td>${ingredient.name}</td>
+                        <td>${ingredient.unit}</td>
+                        <td>${ingredient.price_per_unit.toFixed(4)}</td>
+                        <td>
+                            <button class="delete-ingredient-btn" data-id="${ingredient.id}">Verwijder</button>
+                            <!-- Edit button can be added later -->
+                        </td>
+                    `;
+                });
+                 // Add event listeners to delete buttons AFTER they are in the DOM
+                 addDeleteButtonListeners();
+            } else {
+                const row = ingredientTableBody.insertRow();
+                row.innerHTML = '<td colspan="4">Nog geen ingrediënten toegevoegd.</td>';
+            }
+        } catch (error) {
+            console.error('Error fetching ingredients:', error);
+            const row = ingredientTableBody.insertRow();
+            row.innerHTML = `<td colspan="4">Kon ingrediënten niet laden: ${error.message}</td>`;
+        } finally {
+            loadingIngredientsIndicator.style.display = 'none';
+        }
+    };
+
+    const handleAddIngredient = async () => {
+        const name = ingredientNameInput.value.trim();
+        const unit = ingredientUnitInput.value.trim();
+        const price = ingredientPriceInput.value;
+
+        if (!name || !unit || price === '') {
+            alert('Vul alle velden in voor het ingrediënt.');
+            return;
+        }
+
+        addIngredientBtn.disabled = true;
+        ingredientFeedback.style.display = 'none';
+
+        try {
+            const response = await fetch(addIngredientApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, unit, price_per_unit: price })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            ingredientFeedback.textContent = `Ingrediënt '${data.ingredient.name}' succesvol toegevoegd!`;
+            ingredientFeedback.style.color = 'green';
+            ingredientFeedback.style.display = 'block';
+
+            // Clear form
+            ingredientNameInput.value = '';
+            ingredientUnitInput.value = '';
+            ingredientPriceInput.value = '';
+
+            loadIngredients(); // Refresh the list
+
+        } catch (error) {
+            console.error('Error adding ingredient:', error);
+            ingredientFeedback.textContent = `Fout: ${error.message}`;
+            ingredientFeedback.style.color = 'red';
+            ingredientFeedback.style.display = 'block';
+        } finally {
+            addIngredientBtn.disabled = false;
+        }
+    };
+    
+    const handleDeleteIngredient = async (ingredientId) => {
+        if (!confirm('Weet je zeker dat je dit ingrediënt wilt verwijderen?')) {
+            return;
+        }
+
+        try {
+             // Note: ID is passed as query parameter for DELETE
+            const response = await fetch(`${deleteIngredientApiUrl}?id=${ingredientId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok && response.status !== 204) { // 204 No Content is success for DELETE
+                const errorData = await response.json().catch(() => ({})); // Try to parse error, ignore if no body
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+
+            // alert('Ingrediënt succesvol verwijderd!'); // Optional feedback
+            loadIngredients(); // Refresh the list
+
+        } catch (error) {
+            console.error('Error deleting ingredient:', error);
+            alert(`Kon ingrediënt niet verwijderen: ${error.message}`);
+        }
+    };
+
+    // Function to add listeners to dynamically created delete buttons
+    const addDeleteButtonListeners = () => {
+        document.querySelectorAll('.delete-ingredient-btn').forEach(button => {
+             // Remove existing listener if any to prevent duplicates
+            const newButton = button.cloneNode(true);
+            button.parentNode.replaceChild(newButton, button);
+
+            newButton.addEventListener('click', (event) => {
+                const ingredientId = event.target.getAttribute('data-id');
+                handleDeleteIngredient(ingredientId);
+            });
+        });
+    };
+
+    // --- Event Listeners ---
+    
+    // Existing listener for recipe generation
+    generateBtn.addEventListener('click', async () => { 
+         const idea = ideaInput.value.trim();
         if (!idea) {
             alert('Voer alsjeblieft een broodjesidee in.');
             return;
@@ -92,15 +234,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Optional: Allow pressing Enter
-    ideaInput.addEventListener('keypress', (event) => {
+    // Existing listener for Enter key in recipe input
+    ideaInput.addEventListener('keypress', (event) => { 
         if (event.key === 'Enter') {
             event.preventDefault(); 
             generateBtn.click();
         }
-    });
+     });
 
-    // --- Initial load of recipes when the page loads ---
+    // New listener for adding ingredient
+    addIngredientBtn.addEventListener('click', handleAddIngredient);
+
+    // --- Initial Loads ---
     loadRecipes();
-    // ---------------------------------------------------
+    loadIngredients(); // Load ingredients when the page loads
 });

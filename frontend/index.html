@@ -33,6 +33,37 @@
         </ul>
     </div>
 
+    <hr>
+
+    <div id="ingredienten-beheer-area">
+        <h2>Ingrediënten Beheer (Prijzen invoeren)</h2>
+        
+        <div id="add-ingredient-form">
+            <h3>Nieuw Ingrediënt Toevoegen</h3>
+            <input type="text" id="ingredient-name" placeholder="Naam (bv. Gerookte Kip)" required>
+            <input type="text" id="ingredient-unit" placeholder="Eenheid (bv. kg)" required>
+            <input type="number" id="ingredient-price" placeholder="Prijs per eenheid (bv. 15.50)" step="0.01" required>
+            <button id="add-ingredient-btn">Toevoegen</button>
+            <p id="ingredient-feedback" style="color: green; display: none;"></p>
+        </div>
+
+        <h3>Bestaande Ingrediënten</h3>
+        <div id="loading-ingredients" style="display: none;">Ingrediënten laden...</div>
+        <table id="ingredienten-tabel">
+            <thead>
+                <tr>
+                    <th>Naam</th>
+                    <th>Eenheid</th>
+                    <th>Prijs per Eenheid (€)</th>
+                    <th>Acties</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Ingrediënten worden hier dynamisch ingeladen -->
+            </tbody>
+        </table>
+    </div>
+
     <script src="script.js"></script>
 </body>
 
