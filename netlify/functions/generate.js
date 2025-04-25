@@ -46,7 +46,7 @@ exports.handler = async function (event, context) {
         if (!idea) {
             return { statusCode: 400, body: JSON.stringify({ error: 'No idea provided' }) };
         }
-
+        
         // Initialize Supabase client (ensure variables are set in Netlify)
         const supabaseUrl = process.env.SUPABASE_URL;
         const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
@@ -56,20 +56,23 @@ exports.handler = async function (event, context) {
         }
         supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-        // --- Updated Prompt --- 
+
+        // --- Updated Prompt (v2) --- 
         const prompt = `
-        Genereer een eenvoudig recept voor een broodje gebaseerd op het volgende idee: '${idea}'.
-        Beschrijf de benodigde ingrediënten met geschatte hoeveelheden voor één broodje.
-        Beschrijf de bereidingsstappen duidelijk en beknopt.
-        Houd het recept praktisch en gericht op een snelle bereiding.
-        Formatteer het antwoord netjes met duidelijke kopjes voor Ingrediënten en Bereiding.
+        Genereer een gedetailleerd recept voor een broodje gebaseerd op het volgende idee: '${idea}'.
         
-        VOEG OOK TOE:
-        - Een *schatting* van de kostprijs voor elk individueel ingrediënt (bv. "(geschat €0.50)").
-        - Een *schatting* van de totale kostprijs voor het broodje (bv. "Geschatte totale kosten: €X.XX").
-        Baseer deze schattingen op algemene supermarktprijzen in Euro. Benadruk dat het schattingen zijn.
+        VEREISTEN:
+        1.  **Ingrediënten:** Lijst met benodigde ingrediënten en geschatte hoeveelheden voor één broodje.
+        2.  **Bereidingsstappen:** Duidelijke, stapsgewijze instructies.
+        3.  **Component Suggesties:** Geef suggesties voor specifieke componenten zoals kaas, een zure/frisse component, en specerijen/smaakmakers die goed passen bij het broodje. Geef een korte toelichting waarom.
+        4.  **Geschatte Tijd:** Geef een globale schatting van de totale bereidingstijd.
+        5.  **Geschatte Kosten:** Geef een *schatting* van de kostprijs per ingrediënt (bv. "(geschat €0.50)") en de totale kostprijs (bv. "Geschatte totale kosten: €X.XX"). Baseer dit op algemene supermarktprijzen (Euro) en benadruk dat het schattingen zijn.
+        
+        OPMAAK:
+        Gebruik duidelijke kopjes (bv. Ingrediënten, Bereiding, Component Suggesties, Geschatte Tijd, Geschatte Kosten).
+        Houd het praktisch en gericht op een snelle bereiding waar mogelijk.
         `;
-        // ---------------------
+        // -------------------------
 
         // Call OpenAI API
         const chatCompletion = await openai.chat.completions.create({
@@ -79,39 +82,36 @@ exports.handler = async function (event, context) {
                     content: prompt,
                 }
             ],
-            model: 'gpt-3.5-turbo', // Or gpt-4o for potentially better estimation
+            model: 'gpt-3.5-turbo', // Of gpt-4o voor betere resultaten
         });
 
         const generated_recipe_text = chatCompletion.choices[0].message.content;
 
-        // --- Try to extract estimated cost --- 
+        // Try to extract estimated cost
         const estimated_total_cost = extractEstimatedCost(generated_recipe_text);
-        // ------------------------------------
 
-        // --- Save to Supabase (with estimated cost) --- 
+        // Save to Supabase (idea, recipe text, estimated cost)
         const { data: savedRecipe, error: saveError } = await supabase
-            .from('recipes') 
+            .from('recipes')
             .insert([
-                { 
-                    idea: idea, 
-                    generated_recipe: generated_recipe_text, 
-                    estimated_total_cost: estimated_total_cost // Save the extracted cost (can be null)
+                {
+                    idea: idea,
+                    generated_recipe: generated_recipe_text,
+                    estimated_total_cost: estimated_total_cost
                 }
             ])
-            .select(); 
+            .select();
 
         if (saveError) {
             console.error('Error saving recipe to Supabase:', saveError);
-            // Log error but continue
         }
-        // ---------------------------------------------
 
-        // Return both recipe and estimated cost
+        // Return recipe and estimated cost
         return {
             statusCode: 200,
-            body: JSON.stringify({ 
-                recipe: generated_recipe_text, 
-                estimated_cost: estimated_total_cost // Send estimated cost to frontend
+            body: JSON.stringify({
+                recipe: generated_recipe_text,
+                estimated_cost: estimated_total_cost
             }),
         };
     } catch (error) {

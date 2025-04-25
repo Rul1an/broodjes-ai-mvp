@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateBtn = document.getElementById('generate-btn');
     const ideaInput = document.getElementById('broodje-idee');
     const recipeOutput = document.getElementById('recept-output');
-    const estimatedCostOutput = document.getElementById('estimated-cost-output'); // New element
+    const estimatedCostOutput = document.getElementById('estimated-cost-output'); 
     const loadingIndicator = document.getElementById('loading');
     const loadingListIndicator = document.getElementById('loading-list');
     const recipeList = document.getElementById('recepten-lijst');
@@ -22,11 +22,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const addIngredientApiUrl = '/api/addIngredient';
     const updateIngredientApiUrl = '/api/updateIngredient';
     const deleteIngredientApiUrl = '/api/deleteIngredient';
+    const refineRecipeApiUrl = '/api/refineRecipe'; // New endpoint
 
     // --- Function to fetch and display recipes ---
     const loadRecipes = async () => {
         loadingListIndicator.style.display = 'block';
-        recipeList.innerHTML = ''; // Clear existing list
+        recipeList.innerHTML = ''; 
 
         try {
             const response = await fetch(getRecipesApiUrl);
@@ -44,23 +45,37 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.recipes && data.recipes.length > 0) {
                 data.recipes.forEach(recipe => {
                     const listItem = document.createElement('li');
+                    listItem.dataset.recipeId = recipe.id; // Store recipe ID
+                    listItem.dataset.recipeText = recipe.generated_recipe; // Store full recipe text
+                    
                     let estimatedCostHtml = '';
                     if (recipe.estimated_total_cost !== null && recipe.estimated_total_cost !== undefined) {
                         estimatedCostHtml = `<br><small>Geschatte Kosten: €${recipe.estimated_total_cost.toFixed(2)}</small>`;
                     }
+                    
+                    // --- Updated innerHTML to include refine section ---
                     listItem.innerHTML = `
                         <b>${recipe.idea || 'Onbekend Idee'}</b> 
                         <br> 
                         <small>Opgeslagen op: ${new Date(recipe.created_at).toLocaleString()}</small>
                         ${estimatedCostHtml}
                         <details>
-                            <summary>Bekijk Recept</summary>
-                            <pre>${recipe.generated_recipe || 'Geen recept data'}</pre>
+                            <summary>Bekijk/Verfijn Recept</summary>
+                            <pre class="original-recipe-text">${recipe.generated_recipe || 'Geen recept data'}</pre>
+                            <div class="refine-section" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                                <input type="text" class="refine-input" placeholder="Vraag om verfijning (bv. maak het pittiger)" style="width: 70%; margin-right: 5px;">
+                                <button class="refine-btn">Verfijn Recept</button>
+                                <div class="refine-loading" style="display: none; font-style: italic; color: #888;">Verfijnen...</div>
+                                <pre class="refined-recipe-output" style="margin-top: 5px; background-color: #eef;"></pre>
+                            </div>
                         </details>
-                        <button class="calculate-actual-cost-btn" data-recipe-id="${recipe.id}" style="margin-left: 10px;" disabled title="Bereken werkelijke kosten (nog niet geïmplementeerd)">Bereken Kosten</button>
+                        <button class="calculate-actual-cost-btn" style="margin-left: 10px;" disabled title="Bereken werkelijke kosten (nog niet geïmplementeerd)">Bereken Kosten</button>
                     `;
+                    // ----------------------------------------------------
                     recipeList.appendChild(listItem);
                 });
+                 // Add event listeners AFTER appending all items
+                addRefineButtonListeners();
             } else {
                 recipeList.innerHTML = '<li>Nog geen recepten opgeslagen.</li>';
             }
@@ -194,10 +209,67 @@ document.addEventListener('DOMContentLoaded', () => {
         });
      };
 
+    // --- Function for Recipe Refinement ---
+    const handleRefineRecipe = async (button) => {
+        const listItem = button.closest('li');
+        const originalRecipeText = listItem.dataset.recipeText;
+        const refineInput = listItem.querySelector('.refine-input');
+        const refineRequest = refineInput.value.trim();
+        const loadingDiv = listItem.querySelector('.refine-loading');
+        const outputPre = listItem.querySelector('.refined-recipe-output');
+        
+        if (!refineRequest) {
+            alert('Voer een verfijningsverzoek in.');
+            return;
+        }
 
-    // --- Event Listener for Generate Button --- 
-    generateBtn.addEventListener('click', async () => {
-        const idea = ideaInput.value.trim();
+        button.disabled = true;
+        loadingDiv.style.display = 'block';
+        outputPre.textContent = '';
+
+        try {
+            const response = await fetch(refineRecipeApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ originalRecipe: originalRecipeText, refinementRequest: refineRequest })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            outputPre.textContent = data.recipe; 
+            // Optionally display the new estimated cost if needed
+            // if (data.estimated_cost) { ... }
+
+        } catch (error) {
+            console.error('Error refining recipe:', error);
+            outputPre.textContent = `Fout bij verfijnen: ${error.message}`;
+        } finally {
+            button.disabled = false;
+            loadingDiv.style.display = 'none';
+        }
+    };
+
+    // Function to add listeners to dynamically created refine buttons
+    const addRefineButtonListeners = () => {
+        document.querySelectorAll('.refine-btn').forEach(button => {
+             // Clean up potential old listeners before adding new ones
+            const newButton = button.cloneNode(true);
+            button.parentNode.replaceChild(newButton, button);
+
+            newButton.addEventListener('click', () => {
+                handleRefineRecipe(newButton);
+            });
+        });
+    };
+
+
+    // --- Event Listener for Generate Button (Existing) ---
+    generateBtn.addEventListener('click', async () => { 
+         const idea = ideaInput.value.trim();
         if (!idea) {
             alert('Voer alsjeblieft een broodjesidee in.');
             return;
@@ -245,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loadingIndicator.style.display = 'none';
             generateBtn.disabled = false;
         }
-    });
+     });
 
     // Existing listener for Enter key
     ideaInput.addEventListener('keypress', (event) => { 
