@@ -4,66 +4,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Broodjes AI MVP</title>
+    <title>Broodjes AI App</title>
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <h1>Broodjes Recept Generator</h1>
+    <h1>Broodjes AI App</h1>
 
-    <div class="input-area">
-        <label for="broodje-idee">Voer je broodjesidee in:</label>
-        <input type="text" id="broodje-idee" placeholder="bv. Broodje pittige kip met avocado">
-        <button id="generate-btn">Genereer Recept</button>
-    </div>
+    <nav class="view-navigation">
+        <button data-view="view-generate" class="nav-button active">Nieuw Recept</button>
+        <button data-view="view-recipes" class="nav-button">Opgeslagen Recepten</button>
+        <button data-view="view-ingredients" class="nav-button">Ingrediënten Beheer</button>
+    </nav>
 
-    <div id="resultaat-area">
-        <h2>Gegenereerd Recept:</h2>
-        <div id="loading" style="display: none;">Bezig met genereren...</div>
-        <pre id="recept-output"></pre>
-        <p id="estimated-cost-output" style="font-weight: bold; margin-top: 10px;"></p> <!-- Placeholder for estimated cost -->
-    </div>
-
-    <hr> <!-- Add a visual separator -->
-
-    <div id="opgeslagen-recepten-area">
-        <h2>Opgeslagen Recepten</h2>
-        <div id="loading-list" style="display: none;">Recepten laden...</div>
-        <ul id="recepten-lijst">
-            <!-- Recepten worden hier dynamisch ingeladen -->
-        </ul>
-    </div>
-
-    <hr>
-
-    <div id="ingredienten-beheer-area">
-        <h2>Ingrediënten Beheer (Prijzen invoeren)</h2>
-        
-        <div id="add-ingredient-form">
-            <h3>Nieuw Ingrediënt Toevoegen</h3>
-            <input type="text" id="ingredient-name" placeholder="Naam (bv. Gerookte Kip)" required>
-            <input type="text" id="ingredient-unit" placeholder="Eenheid (bv. kg)" required>
-            <input type="number" id="ingredient-price" placeholder="Prijs per eenheid (bv. 15.50)" step="0.01" required>
-            <button id="add-ingredient-btn">Toevoegen</button>
-            <p id="ingredient-feedback" style="color: green; display: none;"></p>
+    <main>
+        <!-- View 1: Generate Recipe -->
+        <div id="view-generate" class="view active-view">
+            <h2>Nieuw Recept Genereren</h2>
+            <div class="input-area">
+                <label for="broodje-idee">Voer je broodjesidee in:</label>
+                <input type="text" id="broodje-idee" placeholder="bv. Broodje pittige kip met avocado">
+                <button id="generate-btn">Genereer Recept</button>
+            </div>
+            <div id="resultaat-area">
+                <h3>Gegenereerd Recept:</h3>
+                <div id="loading" style="display: none;">Bezig met genereren...</div>
+                <pre id="recept-output"></pre>
+                <p id="estimated-cost-output" style="font-weight: bold; margin-top: 10px;"></p>
+            </div>
         </div>
 
-        <h3>Bestaande Ingrediënten</h3>
-        <div id="loading-ingredients" style="display: none;">Ingrediënten laden...</div>
-        <table id="ingredienten-tabel">
-            <thead>
-                <tr>
-                    <th>Naam</th>
-                    <th>Eenheid</th>
-                    <th>Prijs per Eenheid (€)</th>
-                    <th>Acties</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Ingrediënten worden hier dynamisch ingeladen -->
-            </tbody>
-        </table>
-    </div>
+        <!-- View 2: Saved Recipes -->
+        <div id="view-recipes" class="view">
+             <h2>Opgeslagen Recepten</h2>
+             <div id="loading-list" style="display: none;">Recepten laden...</div>
+             <ul id="recepten-lijst">
+                 <!-- Recepten worden hier dynamisch ingeladen -->
+             </ul>
+             <button id="clear-recipes-btn" style="margin-top: 20px; background-color: #dc3545;">Alle Recepten Verwijderen</button>
+        </div>
+
+        <!-- View 3: Ingredient Management -->
+        <div id="view-ingredients" class="view">
+            <h2>Ingrediënten Beheer (Prijzen invoeren)</h2>
+            <div id="add-ingredient-form">
+                 <h3>Nieuw Ingrediënt Toevoegen</h3>
+                 <input type="text" id="ingredient-name" placeholder="Naam (bv. Gerookte Kip)" required>
+                 <input type="text" id="ingredient-unit" placeholder="Eenheid (bv. kg)" required>
+                 <input type="number" id="ingredient-price" placeholder="Prijs per eenheid (bv. 15.50)" step="0.01" required>
+                 <button id="add-ingredient-btn">Toevoegen</button>
+                 <p id="ingredient-feedback" style="color: green; display: none;"></p>
+            </div>
+            <h3>Bestaande Ingrediënten</h3>
+            <div id="loading-ingredients" style="display: none;">Ingrediënten laden...</div>
+            <table id="ingredienten-tabel">
+                 <thead>
+                     <tr>
+                         <th>Naam</th>
+                         <th>Eenheid</th>
+                         <th>Prijs per Eenheid (€)</th>
+                         <th>Acties</th>
+                     </tr>
+                 </thead>
+                 <tbody>
+                     <!-- Ingrediënten worden hier dynamisch ingeladen -->
+                 </tbody>
+             </table>
+        </div>
+    </main>
 
     <script src="script.js"></script>
 </body>

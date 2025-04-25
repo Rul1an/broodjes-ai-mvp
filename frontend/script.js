@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- Elements ---
-    const generateBtn = document.getElementById('generate-btn');
-    const ideaInput = document.getElementById('broodje-idee');
+    // (Existing elements...)
     const recipeOutput = document.getElementById('recept-output');
     const estimatedCostOutput = document.getElementById('estimated-cost-output'); 
     const loadingIndicator = document.getElementById('loading');
@@ -14,6 +13,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const ingredientFeedback = document.getElementById('ingredient-feedback');
     const loadingIngredientsIndicator = document.getElementById('loading-ingredients');
     const ingredientTableBody = document.querySelector('#ingredienten-tabel tbody');
+    const clearRecipesBtn = document.getElementById('clear-recipes-btn'); // New button
+    const navigationButtons = document.querySelectorAll('.nav-button'); // Navigation buttons
+    const views = document.querySelectorAll('.view'); // All view divs
 
     // API Endpoints
     const generateApiUrl = '/api/generate';
@@ -22,17 +24,73 @@ document.addEventListener('DOMContentLoaded', () => {
     const addIngredientApiUrl = '/api/addIngredient';
     const updateIngredientApiUrl = '/api/updateIngredient';
     const deleteIngredientApiUrl = '/api/deleteIngredient';
-    const refineRecipeApiUrl = '/api/refineRecipe'; // New endpoint
+    const refineRecipeApiUrl = '/api/refineRecipe';
+    const clearRecipesApiUrl = '/api/clearRecipes'; // New endpoint
 
-    // --- Function to fetch and display recipes ---
-    const loadRecipes = async () => {
-        loadingListIndicator.style.display = 'block';
+    // --- View Switching Logic ---
+    const setActiveView = (viewId) => {
+        views.forEach(view => {
+            if (view.id === viewId) {
+                view.classList.add('active-view');
+            } else {
+                view.classList.remove('active-view');
+            }
+        });
+        navigationButtons.forEach(button => {
+            if (button.dataset.view === viewId) {
+                button.classList.add('active');
+            } else {
+                button.classList.remove('active');
+            }
+        });
+        // Optional: Load data when view becomes active
+        if (viewId === 'view-recipes') loadRecipes();
+        if (viewId === 'view-ingredients') loadIngredients();
+    };
+
+    navigationButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            setActiveView(button.dataset.view);
+        });
+    });
+
+    // --- Function to clear all recipes ---
+    const handleClearAllRecipes = async () => {
+        if (!confirm('WAARSCHUWING: Weet je zeker dat je ALLE opgeslagen recepten permanent wilt verwijderen?')) {
+            return;
+        }
+        
+        clearRecipesBtn.disabled = true;
+        loadingListIndicator.style.display = 'block'; // Use recipe list loading indicator
+
+        try {
+            const response = await fetch(clearRecipesApiUrl, { method: 'POST' });
+
+            if (!response.ok) {
+                 const errorData = await response.json().catch(() => ({}));
+                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+            
+            alert('Alle recepten zijn succesvol verwijderd.');
+            loadRecipes(); // Refresh the (now empty) list
+
+        } catch (error) {
+             console.error('Error clearing recipes:', error);
+             alert(`Kon recepten niet verwijderen: ${error.message}`);
+        } finally {
+             clearRecipesBtn.disabled = false;
+             loadingListIndicator.style.display = 'none';
+        }
+    };
+
+    // --- Existing Functions ---
+    const loadRecipes = async () => { 
+         loadingListIndicator.style.display = 'block';
         recipeList.innerHTML = ''; 
 
         try {
             const response = await fetch(getRecipesApiUrl);
             if (!response.ok) {
-                // ... (error handling) ...
                  let errorMsg = `Fout bij ophalen: ${response.status}`;
                  try {
                      const errorData = await response.json();
@@ -45,15 +103,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.recipes && data.recipes.length > 0) {
                 data.recipes.forEach(recipe => {
                     const listItem = document.createElement('li');
-                    listItem.dataset.recipeId = recipe.id; // Store recipe ID
-                    listItem.dataset.recipeText = recipe.generated_recipe; // Store full recipe text
+                    listItem.dataset.recipeId = recipe.id; 
+                    listItem.dataset.recipeText = recipe.generated_recipe; 
                     
                     let estimatedCostHtml = '';
                     if (recipe.estimated_total_cost !== null && recipe.estimated_total_cost !== undefined) {
                         estimatedCostHtml = `<br><small>Geschatte Kosten: €${recipe.estimated_total_cost.toFixed(2)}</small>`;
                     }
                     
-                    // --- Updated innerHTML to include refine section ---
                     listItem.innerHTML = `
                         <b>${recipe.idea || 'Onbekend Idee'}</b> 
                         <br> 
@@ -71,11 +128,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         </details>
                         <button class="calculate-actual-cost-btn" style="margin-left: 10px;" disabled title="Bereken werkelijke kosten (nog niet geïmplementeerd)">Bereken Kosten</button>
                     `;
-                    // ----------------------------------------------------
                     recipeList.appendChild(listItem);
                 });
-                 // Add event listeners AFTER appending all items
-                addRefineButtonListeners();
+                 addRefineButtonListeners();
             } else {
                 recipeList.innerHTML = '<li>Nog geen recepten opgeslagen.</li>';
             }
@@ -85,9 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             loadingListIndicator.style.display = 'none';
         }
-    };
-
-    // --- Functions for Ingredient Management (Existing) ---
+     };
     const loadIngredients = async () => { 
          loadingIngredientsIndicator.style.display = 'block';
         ingredientTableBody.innerHTML = ''; // Clear existing table body
@@ -112,7 +165,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         </td>
                     `;
                 });
-                 // Add event listeners to delete buttons AFTER they are in the DOM
                  addDeleteButtonListeners();
             } else {
                 const row = ingredientTableBody.insertRow();
@@ -208,10 +260,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
      };
-
-    // --- Function for Recipe Refinement ---
-    const handleRefineRecipe = async (button) => {
-        const listItem = button.closest('li');
+    const handleRefineRecipe = async (button) => { 
+         const listItem = button.closest('li');
         const originalRecipeText = listItem.dataset.recipeText;
         const refineInput = listItem.querySelector('.refine-input');
         const refineRequest = refineInput.value.trim();
@@ -251,11 +301,9 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = false;
             loadingDiv.style.display = 'none';
         }
-    };
-
-    // Function to add listeners to dynamically created refine buttons
-    const addRefineButtonListeners = () => {
-        document.querySelectorAll('.refine-btn').forEach(button => {
+     };
+    const addRefineButtonListeners = () => { 
+         document.querySelectorAll('.refine-btn').forEach(button => {
              // Clean up potential old listeners before adding new ones
             const newButton = button.cloneNode(true);
             button.parentNode.replaceChild(newButton, button);
@@ -264,10 +312,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 handleRefineRecipe(newButton);
             });
         });
-    };
-
-
-    // --- Event Listener for Generate Button (Existing) ---
+     };
+    
+    // --- Event Listeners ---
     generateBtn.addEventListener('click', async () => { 
          const idea = ideaInput.value.trim();
         if (!idea) {
@@ -318,19 +365,16 @@ document.addEventListener('DOMContentLoaded', () => {
             generateBtn.disabled = false;
         }
      });
-
-    // Existing listener for Enter key
     ideaInput.addEventListener('keypress', (event) => { 
          if (event.key === 'Enter') {
              event.preventDefault(); 
              generateBtn.click();
          }
      });
-
-    // Existing listener for adding ingredient
     addIngredientBtn.addEventListener('click', handleAddIngredient);
+    clearRecipesBtn.addEventListener('click', handleClearAllRecipes); // Listener for new button
 
-    // --- Initial Loads ---
-    loadRecipes();
-    loadIngredients(); 
+    // --- Initial Setup ---
+    setActiveView('view-generate'); // Set the initial view
+    // Data for other views will be loaded when they are switched to.
 });
