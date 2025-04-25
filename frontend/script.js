@@ -1,11 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Elements ---
-    // (Existing elements...)
+    const generateBtn = document.getElementById('generate-btn');
+    const ideaInput = document.getElementById('broodje-idee');
     const recipeOutput = document.getElementById('recept-output');
-    const estimatedCostOutput = document.getElementById('estimated-cost-output'); 
+    const estimatedCostOutput = document.getElementById('estimated-cost-output');
     const loadingIndicator = document.getElementById('loading');
     const loadingListIndicator = document.getElementById('loading-list');
     const recipeList = document.getElementById('recepten-lijst');
+
+    // --- New Ingredient Management Elements ---
     const ingredientNameInput = document.getElementById('ingredient-name');
     const ingredientUnitInput = document.getElementById('ingredient-unit');
     const ingredientPriceInput = document.getElementById('ingredient-price');
@@ -13,9 +15,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const ingredientFeedback = document.getElementById('ingredient-feedback');
     const loadingIngredientsIndicator = document.getElementById('loading-ingredients');
     const ingredientTableBody = document.querySelector('#ingredienten-tabel tbody');
-    const clearRecipesBtn = document.getElementById('clear-recipes-btn'); // New button
-    const navigationButtons = document.querySelectorAll('.nav-button'); // Navigation buttons
-    const views = document.querySelectorAll('.view'); // All view divs
+    const clearRecipesBtn = document.getElementById('clear-recipes-btn');
+    const navigationButtons = document.querySelectorAll('.nav-button');
+    const views = document.querySelectorAll('.view');
+
+    console.log('Script start: generateBtn element:', document.getElementById('generate-btn')); // Log 1: Check if element exists at start
+    console.log('Script start: generateBtn variable:', generateBtn); // Log 2: Check variable value after assignment
 
     // API Endpoints
     const generateApiUrl = '/api/generate';
@@ -25,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const updateIngredientApiUrl = '/api/updateIngredient';
     const deleteIngredientApiUrl = '/api/deleteIngredient';
     const refineRecipeApiUrl = '/api/refineRecipe';
-    const clearRecipesApiUrl = '/api/clearRecipes'; // New endpoint
+    const clearRecipesApiUrl = '/api/clearRecipes';
 
     // --- View Switching Logic ---
     const setActiveView = (viewId) => {
@@ -43,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.classList.remove('active');
             }
         });
-        // Optional: Load data when view becomes active
         if (viewId === 'view-recipes') loadRecipes();
         if (viewId === 'view-ingredients') loadIngredients();
     };
@@ -59,61 +63,61 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm('WAARSCHUWING: Weet je zeker dat je ALLE opgeslagen recepten permanent wilt verwijderen?')) {
             return;
         }
-        
+
         clearRecipesBtn.disabled = true;
-        loadingListIndicator.style.display = 'block'; // Use recipe list loading indicator
+        loadingListIndicator.style.display = 'block';
 
         try {
             const response = await fetch(clearRecipesApiUrl, { method: 'POST' });
 
             if (!response.ok) {
-                 const errorData = await response.json().catch(() => ({}));
-                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
-            
+
             alert('Alle recepten zijn succesvol verwijderd.');
-            loadRecipes(); // Refresh the (now empty) list
+            loadRecipes();
 
         } catch (error) {
-             console.error('Error clearing recipes:', error);
-             alert(`Kon recepten niet verwijderen: ${error.message}`);
+            console.error('Error clearing recipes:', error);
+            alert(`Kon recepten niet verwijderen: ${error.message}`);
         } finally {
-             clearRecipesBtn.disabled = false;
-             loadingListIndicator.style.display = 'none';
+            clearRecipesBtn.disabled = false;
+            loadingListIndicator.style.display = 'none';
         }
     };
 
-    // --- Existing Functions ---
-    const loadRecipes = async () => { 
-         loadingListIndicator.style.display = 'block';
-        recipeList.innerHTML = ''; 
+    // Function to fetch and display recipes
+    const loadRecipes = async () => {
+        loadingListIndicator.style.display = 'block';
+        recipeList.innerHTML = ''; // Clear existing list
 
         try {
             const response = await fetch(getRecipesApiUrl);
             if (!response.ok) {
-                 let errorMsg = `Fout bij ophalen: ${response.status}`;
-                 try {
-                     const errorData = await response.json();
-                     errorMsg = errorData.error || errorMsg;
-                 } catch (e) {}
-                 throw new Error(errorMsg);
+                let errorMsg = `Fout bij ophalen: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorMsg;
+                } catch (e) { }
+                throw new Error(errorMsg);
             }
             const data = await response.json();
 
             if (data.recipes && data.recipes.length > 0) {
                 data.recipes.forEach(recipe => {
                     const listItem = document.createElement('li');
-                    listItem.dataset.recipeId = recipe.id; 
-                    listItem.dataset.recipeText = recipe.generated_recipe; 
-                    
+                    listItem.dataset.recipeId = recipe.id;
+                    listItem.dataset.recipeText = recipe.generated_recipe;
+
                     let estimatedCostHtml = '';
                     if (recipe.estimated_total_cost !== null && recipe.estimated_total_cost !== undefined) {
                         estimatedCostHtml = `<br><small>Geschatte Kosten: €${recipe.estimated_total_cost.toFixed(2)}</small>`;
                     }
-                    
+
                     listItem.innerHTML = `
-                        <b>${recipe.idea || 'Onbekend Idee'}</b> 
-                        <br> 
+                        <b>${recipe.idea || 'Onbekend Idee'}</b>
+                        <br>
                         <small>Opgeslagen op: ${new Date(recipe.created_at).toLocaleString()}</small>
                         ${estimatedCostHtml}
                         <details>
@@ -130,19 +134,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                     recipeList.appendChild(listItem);
                 });
-                 addRefineButtonListeners();
+                addRefineButtonListeners();
             } else {
                 recipeList.innerHTML = '<li>Nog geen recepten opgeslagen.</li>';
             }
+
         } catch (error) {
-             console.error('Error fetching recipes:', error);
-             recipeList.innerHTML = `<li>Kon recepten niet laden: ${error.message}</li>`;
+            console.error('Error fetching recipes:', error);
+            recipeList.innerHTML = `<li>Kon recepten niet laden: ${error.message}</li>`;
         } finally {
             loadingListIndicator.style.display = 'none';
         }
-     };
-    const loadIngredients = async () => { 
-         loadingIngredientsIndicator.style.display = 'block';
+    };
+
+    // --- Functions for Ingredient Management ---
+    const loadIngredients = async () => {
+        loadingIngredientsIndicator.style.display = 'block';
         ingredientTableBody.innerHTML = ''; // Clear existing table body
 
         try {
@@ -165,7 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         </td>
                     `;
                 });
-                 addDeleteButtonListeners();
+                // Add event listeners to delete buttons AFTER they are in the DOM
+                addDeleteButtonListeners();
             } else {
                 const row = ingredientTableBody.insertRow();
                 row.innerHTML = '<td colspan="4">Nog geen ingrediënten toegevoegd.</td>';
@@ -177,9 +185,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             loadingIngredientsIndicator.style.display = 'none';
         }
-     };
-    const handleAddIngredient = async () => { 
-         const name = ingredientNameInput.value.trim();
+    };
+
+    const handleAddIngredient = async () => {
+        const name = ingredientNameInput.value.trim();
         const unit = ingredientUnitInput.value.trim();
         const price = ingredientPriceInput.value;
 
@@ -223,14 +232,15 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             addIngredientBtn.disabled = false;
         }
-     };
-    const handleDeleteIngredient = async (ingredientId) => { 
-         if (!confirm('Weet je zeker dat je dit ingrediënt wilt verwijderen?')) {
+    };
+
+    const handleDeleteIngredient = async (ingredientId) => {
+        if (!confirm('Weet je zeker dat je dit ingrediënt wilt verwijderen?')) {
             return;
         }
 
         try {
-             // Note: ID is passed as query parameter for DELETE
+            // Note: ID is passed as query parameter for DELETE
             const response = await fetch(`${deleteIngredientApiUrl}?id=${ingredientId}`, {
                 method: 'DELETE'
             });
@@ -247,27 +257,27 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error deleting ingredient:', error);
             alert(`Kon ingrediënt niet verwijderen: ${error.message}`);
         }
-     };
-    const addDeleteButtonListeners = () => { 
-         document.querySelectorAll('.delete-ingredient-btn').forEach(button => {
-             // Remove existing listener if any to prevent duplicates
-            const newButton = button.cloneNode(true);
-            button.parentNode.replaceChild(newButton, button);
+    };
 
-            newButton.addEventListener('click', (event) => {
+    // Function to add listeners to dynamically created delete buttons
+    const addDeleteButtonListeners = () => {
+        document.querySelectorAll('.delete-ingredient-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
                 const ingredientId = event.target.getAttribute('data-id');
                 handleDeleteIngredient(ingredientId);
             });
         });
-     };
-    const handleRefineRecipe = async (button) => { 
-         const listItem = button.closest('li');
+    };
+
+    // --- Function for Recipe Refinement ---
+    const handleRefineRecipe = async (button) => {
+        const listItem = button.closest('li');
         const originalRecipeText = listItem.dataset.recipeText;
         const refineInput = listItem.querySelector('.refine-input');
         const refineRequest = refineInput.value.trim();
         const loadingDiv = listItem.querySelector('.refine-loading');
         const outputPre = listItem.querySelector('.refined-recipe-output');
-        
+
         if (!refineRequest) {
             alert('Voer een verfijningsverzoek in.');
             return;
@@ -290,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            outputPre.textContent = data.recipe; 
+            outputPre.textContent = data.recipe;
             // Optionally display the new estimated cost if needed
             // if (data.estimated_cost) { ... }
 
@@ -301,10 +311,12 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = false;
             loadingDiv.style.display = 'none';
         }
-     };
-    const addRefineButtonListeners = () => { 
-         document.querySelectorAll('.refine-btn').forEach(button => {
-             // Clean up potential old listeners before adding new ones
+    };
+
+    // Function to add listeners to dynamically created refine buttons
+    const addRefineButtonListeners = () => {
+        document.querySelectorAll('.refine-btn').forEach(button => {
+            // Clean up potential old listeners before adding new ones
             const newButton = button.cloneNode(true);
             button.parentNode.replaceChild(newButton, button);
 
@@ -312,69 +324,79 @@ document.addEventListener('DOMContentLoaded', () => {
                 handleRefineRecipe(newButton);
             });
         });
-     };
-    
-    // --- Event Listeners ---
-    generateBtn.addEventListener('click', async () => { 
-         const idea = ideaInput.value.trim();
-        if (!idea) {
-            alert('Voer alsjeblieft een broodjesidee in.');
-            return;
-        }
+    };
 
-        recipeOutput.textContent = '';
-        estimatedCostOutput.textContent = ''; // Clear previous estimate
-        loadingIndicator.style.display = 'block';
-        generateBtn.disabled = true;
-
-        try {
-            const response = await fetch(generateApiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idea: idea })
-            });
-
-            if (!response.ok) {
-                let errorMsg = `Fout: ${response.status}`;
-                 try {
-                    const errorData = await response.json();
-                    errorMsg = errorData.error || errorMsg;
-                } catch (e) {}
-                throw new Error(errorMsg);
+    // Generate button event listener
+    console.log('Before adding listener: generateBtn variable:', generateBtn); // Log 3: Check variable value just before listener
+    try {
+        generateBtn.addEventListener('click', async () => {
+            const idea = ideaInput.value.trim();
+            if (!idea) {
+                alert('Voer alsjeblieft een broodjesidee in.');
+                return;
             }
 
-            const data = await response.json();
-            recipeOutput.textContent = data.recipe;
-            
-            // --- Display Estimated Cost ---
-            if (data.estimated_cost !== null && data.estimated_cost !== undefined) {
-                 estimatedCostOutput.textContent = `Geschatte Totale Kosten (AI): €${data.estimated_cost.toFixed(2)}`;
-            } else {
-                 estimatedCostOutput.textContent = 'Kon geen kosten schatten.';
+            recipeOutput.textContent = '';
+            estimatedCostOutput.textContent = '';
+            loadingIndicator.style.display = 'block';
+            generateBtn.disabled = true;
+
+            try {
+                const response = await fetch(generateApiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idea: idea })
+                });
+
+                if (!response.ok) {
+                    let errorMsg = `Fout: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) { }
+                    throw new Error(errorMsg);
+                }
+
+                const data = await response.json();
+                recipeOutput.textContent = data.recipe;
+
+                // --- Display Estimated Cost ---
+                if (data.estimated_cost !== null && data.estimated_cost !== undefined) {
+                    estimatedCostOutput.textContent = `Geschatte Totale Kosten (AI): €${data.estimated_cost.toFixed(2)}`;
+                } else {
+                    estimatedCostOutput.textContent = 'Kon geen kosten schatten.';
+                }
+                // ---------------------------
+
+                loadRecipes();
+
+            } catch (error) {
+                console.error('Error generating recipe:', error);
+                recipeOutput.textContent = `Kon het recept niet genereren: ${error.message}`;
+                estimatedCostOutput.textContent = '';
+            } finally {
+                loadingIndicator.style.display = 'none';
+                generateBtn.disabled = false;
             }
-            // ---------------------------
+        });
+    } catch (e) {
+        console.error("Error adding event listener to generateBtn:", e); // Log 4: Catch potential error during listener addition
+        console.error("Value of generateBtn when error occurred:", generateBtn);
+    }
 
-            loadRecipes(); // Refresh the list
-
-        } catch (error) {
-            console.error('Error generating recipe:', error);
-            recipeOutput.textContent = `Kon het recept niet genereren: ${error.message}`;
-            estimatedCostOutput.textContent = ''; // Clear estimate on error
-        } finally {
-            loadingIndicator.style.display = 'none';
-            generateBtn.disabled = false;
+    // Optional: Allow pressing Enter
+    ideaInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            generateBtn.click();
         }
-     });
-    ideaInput.addEventListener('keypress', (event) => { 
-         if (event.key === 'Enter') {
-             event.preventDefault(); 
-             generateBtn.click();
-         }
-     });
+    });
+
+    // New listener for adding ingredient
     addIngredientBtn.addEventListener('click', handleAddIngredient);
-    clearRecipesBtn.addEventListener('click', handleClearAllRecipes); // Listener for new button
+    clearRecipesBtn.addEventListener('click', handleClearAllRecipes);
 
     // --- Initial Setup ---
-    setActiveView('view-generate'); // Set the initial view
+    setActiveView('view-generate');
     // Data for other views will be loaded when they are switched to.
 });
