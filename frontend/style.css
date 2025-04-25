@@ -9,8 +9,53 @@ body {
 h1 {
     text-align: center;
     color: #333;
+    margin-bottom: 30px;
 }
 
+/* Navigation Styling */
+.view-navigation {
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 15px;
+}
+
+.nav-button {
+    padding: 10px 20px;
+    margin: 0 5px;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.nav-button:hover {
+    background-color: #e9ecef;
+    border-color: #bbb;
+}
+
+.nav-button.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+/* View Handling */
+.view {
+    display: none;
+    /* Hide all views by default */
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+.active-view {
+    display: block;
+    /* Show the active view */
+}
+
+/* Existing Styles (ensure they still apply correctly) */
 .input-area {
     margin-bottom: 20px;
     display: flex;
@@ -22,7 +67,9 @@ label {
     font-weight: bold;
 }
 
-input[type="text"] {
+input[type="text"],
+input[type="number"] {
+    /* Added number input */
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
@@ -42,32 +89,109 @@ button:hover {
     background-color: #0056b3;
 }
 
-#resultaat-area {
-    border: 1px solid #eee;
-    padding: 15px;
-    background-color: #f9f9f9;
-    border-radius: 4px;
-    min-height: 100px;
-    /* Ensure area is visible even when empty */
+button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
 }
 
-h2 {
+#resultaat-area,
+#opgeslagen-recepten-area,
+#ingredienten-beheer-area {
+    margin-bottom: 30px;
+    /* Add some space between sections if they were visible */
+}
+
+#resultaat-area h3,
+/* Adjusted heading level */
+#opgeslagen-recepten-area h2,
+#ingredienten-beheer-area h2 {
     margin-top: 0;
     color: #555;
+    margin-bottom: 15px;
 }
 
-#loading {
+#ingredienten-beheer-area h3 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+
+#loading,
+#loading-list,
+#loading-ingredients {
     font-style: italic;
     color: #888;
 }
 
 pre {
     white-space: pre-wrap;
-    /* Allows text to wrap */
     word-wrap: break-word;
-    /* Breaks long words */
     background-color: #fff;
     padding: 10px;
     border: 1px dashed #ddd;
     border-radius: 4px;
+    font-size: 0.9em;
+    /* Slightly smaller pre text */
+}
+
+ul#recepten-lijst {
+    list-style: none;
+    padding: 0;
+}
+
+ul#recepten-lijst li {
+    background-color: #f9f9f9;
+    border: 1px solid #eee;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+ul#recepten-lijst li details {
+    margin-top: 10px;
+}
+
+ul#recepten-lijst li details summary {
+    cursor: pointer;
+    font-weight: bold;
+    color: #007bff;
+}
+
+/* Ingredient Table Styling */
+#ingredienten-tabel {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+#ingredienten-tabel th,
+#ingredienten-tabel td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+#ingredienten-tabel th {
+    background-color: #f2f2f2;
+}
+
+#ingredienten-tabel button {
+    padding: 5px 10px;
+    font-size: 0.9em;
+    margin-right: 5px;
+}
+
+button.delete-ingredient-btn {
+    background-color: #dc3545;
+    /* Red for delete */
+}
+
+button.delete-ingredient-btn:hover {
+    background-color: #c82333;
+}
+
+/* Feedback message styling */
+#ingredient-feedback {
+    margin-top: 10px;
+    font-weight: bold;
 }
