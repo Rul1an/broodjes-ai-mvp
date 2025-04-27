@@ -90,7 +90,7 @@ exports.handler = async function (event, context) {
             // Overweeg hier eventueel een 500 error terug te geven als de background call essentieel is.
         }
 
-        const backgroundFunctionUrl = siteUrl ? `${siteUrl}/.netlify/functions/background_generate_go-background/main` : null;
+        const backgroundFunctionUrl = siteUrl ? `${siteUrl}/.netlify/functions/background_generate_go-background` : null;
 
         // Invoke the background task asynchronously via our background function
         // This happens asynchronously and will not block the response
