@@ -42,15 +42,15 @@ exports.handler = async function (event, context) {
 
         // Initialize Supabase client
         const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const supabaseKey = process.env.SERVICE_ROLE_KEY;
 
         // DEBUG LOGGING: Removed after confirming the issue
         // console.log('DEBUG: Received SUPABASE_URL:', supabaseUrl ? 'Set' : 'Not Set or Empty');
-        // console.log('DEBUG: Received SUPABASE_SERVICE_ROLE_KEY:', supabaseKey ? 'Set (length: ' + supabaseKey.length + ')' : 'Not Set or Empty');
+        // console.log('DEBUG: Received SERVICE_ROLE_KEY:', supabaseKey ? 'Set (length: ' + supabaseKey.length + ')' : 'Not Set or Empty');
         // console.log('DEBUG: Service Key starts with:', supabaseKey ? supabaseKey.substring(0, 5) : 'N/A');
 
         if (!supabaseUrl || !supabaseKey) {
-            console.error('Supabase URL or Service Role Key missing in generate-start function');
+            console.error('Supabase URL or SERVICE_ROLE_KEY missing in generate-start function');
             return {
                 statusCode: 500,
                 body: JSON.stringify({ error: 'Server configuration error' })
