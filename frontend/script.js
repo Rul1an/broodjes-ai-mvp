@@ -115,7 +115,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 data.recipes.forEach(recipe => {
                     const listItem = document.createElement('li');
                     listItem.dataset.recipeId = recipe.id;
-                    listItem.dataset.recipeText = recipe.generated_recipe;
+
+                    // Process recipe text to remove JSON
+                    let recipeText = recipe.generated_recipe;
+                    const jsonIndex = recipeText.indexOf('```json');
+                    if (jsonIndex !== -1) {
+                        listItem.dataset.recipeText = recipeText; // Store full text including JSON
+                        recipeText = recipeText.substring(0, jsonIndex).trim(); // Remove JSON for display
+                    } else {
+                        listItem.dataset.recipeText = recipeText;
+                    }
 
                     let estimatedCostHtml = '';
                     if (recipe.estimated_total_cost !== null && recipe.estimated_total_cost !== undefined) {
@@ -129,16 +138,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${estimatedCostHtml}
                         <details>
                             <summary>Bekijk/Verfijn Recept</summary>
-                            <pre class="original-recipe-text">${recipe.generated_recipe || 'Geen recept data'}</pre>
+                            <div class="original-recipe-content"></div>
                             <div class="refine-section" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
                                 <input type="text" class="refine-input" placeholder="Vraag om verfijning (bv. maak het pittiger)" style="width: 70%; margin-right: 5px;">
                                 <button class="refine-btn">Verfijn Recept</button>
                                 <div class="refine-loading" style="display: none; font-style: italic; color: #888;">Verfijnen...</div>
-                                <pre class="refined-recipe-output" style="margin-top: 5px; background-color: #eef;"></pre>
+                                <div class="refined-recipe-output" style="margin-top: 5px; background-color: #eef;"></div>
                             </div>
                         </details>
                         <button class="calculate-actual-cost-btn" style="margin-left: 10px;" disabled title="Bereken werkelijke kosten (nog niet geïmplementeerd)">Bereken Kosten</button>
                     `;
+
+                    // Render the markdown for the recipe text
+                    const recipeContentElement = listItem.querySelector('.original-recipe-content');
+                    recipeContentElement.innerHTML = marked.parse(recipeText);
+
                     recipeList.appendChild(listItem);
                 });
             } else {
@@ -278,22 +292,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Function for Recipe Refinement ---
     const handleRefineRecipe = async (button) => {
         const listItem = button.closest('li');
-        const originalRecipeText = listItem.dataset.recipeText;
         const refineInput = listItem.querySelector('.refine-input');
-        const refineRequest = refineInput.value.trim();
+        const outputDiv = listItem.querySelector('.refined-recipe-output');
         const loadingDiv = listItem.querySelector('.refine-loading');
-        const outputPre = listItem.querySelector('.refined-recipe-output');
+
+        const originalRecipeText = listItem.dataset.recipeText;
+        const refineRequest = refineInput.value.trim();
 
         if (!refineRequest) {
-            alert('Voer een verfijningsverzoek in.');
+            alert('Vul een verfijningsverzoek in!');
             return;
         }
 
         const originalButtonText = button.textContent;
         button.disabled = true;
-        button.textContent = 'Verfijnen...';
+        button.textContent = 'Bezig...';
         loadingDiv.style.display = 'block';
-        outputPre.textContent = '';
+        outputDiv.textContent = '';
 
         try {
             const response = await fetch(refineRecipeApiUrl, {
@@ -308,19 +323,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            // Update the output with Markdown rendering
-            if (typeof marked !== 'undefined') {
-                outputPre.innerHTML = marked.parse(data.recipe || '');
-            } else {
-                console.error("Marked library not found for refining output.");
-                outputPre.textContent = data.recipe; // Fallback to text
+
+            // Process recipe text to remove JSON if present
+            let refinedText = data.recipe || '';
+            const jsonIndex = refinedText.indexOf('```json');
+            if (jsonIndex !== -1) {
+                refinedText = refinedText.substring(0, jsonIndex).trim();
             }
-            // Optionally display the new estimated cost if needed
-            // if (data.estimated_cost) { ... }
+
+            // Update the output with Markdown rendering
+            outputDiv.innerHTML = marked.parse(refinedText);
 
         } catch (error) {
             console.error('Error refining recipe:', error);
-            outputPre.textContent = `Fout bij verfijnen: ${error.message}`;
+            outputDiv.innerHTML = `<p class="error">Fout bij verfijnen: ${error.message}</p>`;
         } finally {
             button.disabled = false;
             button.textContent = originalButtonText;
@@ -334,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (pollCount >= MAX_POLL_ATTEMPTS) {
             console.error(`Polling stopped for task ${taskId} after reaching max attempts.`);
-            recipeOutput.textContent = 'Fout: Recept genereren duurde te lang.';
+            recipeOutput.innerHTML = '<p class="error">Fout: Recept genereren duurde te lang.</p>';
             estimatedCostOutput.textContent = '';
             loadingIndicator.style.display = 'none';
             generateBtn.disabled = false;
@@ -349,7 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Handle cases where the task is not found (maybe backend restarted)
             if (response.status === 404) {
                 console.error(`Task ${taskId} not found.`);
-                recipeOutput.textContent = 'Fout: Generatie taak niet gevonden. Probeer opnieuw.';
+                recipeOutput.innerHTML = '<p class="error">Fout: Generatie taak niet gevonden. Probeer opnieuw.</p>';
                 estimatedCostOutput.textContent = '';
                 loadingIndicator.style.display = 'none';
                 generateBtn.disabled = false;
@@ -367,7 +383,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.status === 'completed') {
                 console.log(`Task ${taskId} completed successfully.`);
-                recipeOutput.textContent = data.recipe || 'Geen recept ontvangen.';
+
+                // Use Marked to render the markdown
+                if (data.recipe) {
+                    // Format recipe text by removing JSON and adding proper markdown
+                    let recipeText = data.recipe;
+                    // Remove JSON block if present
+                    const jsonIndex = recipeText.indexOf('```json');
+                    if (jsonIndex !== -1) {
+                        recipeText = recipeText.substring(0, jsonIndex);
+                    }
+
+                    // Render using marked.js
+                    recipeOutput.innerHTML = marked.parse(recipeText);
+                } else {
+                    recipeOutput.textContent = 'Geen recept ontvangen.';
+                }
+
                 if (data.estimated_cost !== null && data.estimated_cost !== undefined) {
                     estimatedCostOutput.textContent = `Geschatte kosten: €${data.estimated_cost.toFixed(2)}`;
                 } else {
@@ -385,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             } else if (data.status === 'failed') {
                 console.error(`Task ${taskId} failed:`, data.error);
-                recipeOutput.textContent = `Fout bij genereren: ${data.error || 'Onbekende fout'}`;
+                recipeOutput.innerHTML = `<p class="error">Fout bij genereren: ${data.error || 'Onbekende fout'}</p>`;
                 estimatedCostOutput.textContent = '';
                 loadingIndicator.style.display = 'none';
                 generateBtn.disabled = false;
@@ -398,7 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 // Unexpected status
                 console.error(`Task ${taskId} has unexpected status:`, data.status);
-                recipeOutput.textContent = `Fout: Onverwachte status (${data.status}).`;
+                recipeOutput.innerHTML = `<p class="error">Fout: Onverwachte status (${data.status}).</p>`;
                 estimatedCostOutput.textContent = '';
                 loadingIndicator.style.display = 'none';
                 generateBtn.disabled = false;
@@ -408,7 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Error polling task status:', error);
-            recipeOutput.textContent = `Fout bij controleren status: ${error.message}`;
+            recipeOutput.innerHTML = `<p class="error">Fout bij controleren status: ${error.message}</p>`;
             estimatedCostOutput.textContent = '';
             loadingIndicator.style.display = 'none';
             generateBtn.disabled = false;
