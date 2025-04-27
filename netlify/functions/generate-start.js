@@ -82,23 +82,39 @@ exports.handler = async function (event, context) {
             };
         }
 
+        // Haal de basis URL van de site op uit de environment variabelen
+        const siteUrl = process.env.URL;
+        if (!siteUrl) {
+            console.error('Site URL (process.env.URL) is not set. Cannot invoke background function.');
+            // We kunnen de taak nog steeds aanmaken, maar de achtergrondfunctie wordt niet aangeroepen.
+            // Overweeg hier eventueel een 500 error terug te geven als de background call essentieel is.
+        }
+
+        const backgroundFunctionUrl = siteUrl ? `${siteUrl}/.netlify/functions/background_generate_go-background/main` : null;
+
         // Invoke the background task asynchronously via our background function
         // This happens asynchronously and will not block the response
-        fetch('/.netlify/functions/background_generate_go-background/main', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                task_id: taskId,
-                idea: idea.trim(),
-                model: requestedModel
-            })
-        }).catch(err => {
-            console.error('Error invoking background function:', err);
-            // We don't wait for this, so we just log the error
-            // The task status will remain 'pending' in the database
-        });
+        if (backgroundFunctionUrl) {
+            fetch(backgroundFunctionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    task_id: taskId,
+                    idea: idea.trim(),
+                    model: requestedModel
+                })
+            }).catch(err => {
+                console.error('Error invoking background function:', err);
+                // We don't wait for this, so we just log the error
+                // The task status will remain 'pending' in the database
+            });
+        } else {
+            console.error('Could not invoke background function because site URL is missing.');
+            // Optioneel: Update de taakstatus naar 'failed' omdat de achtergrond niet kon starten?
+            // Dit hangt af van de gewenste logica.
+        }
 
         // Return success with the task ID immediately
         return {
