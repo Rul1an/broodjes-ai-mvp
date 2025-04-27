@@ -10,31 +10,66 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Basic styling for generated recipe content -->
     <style>
+        /* Gemeenschappelijke stijlen voor alle markdown-weergave elementen */
         #recept-output h1,
         #recept-output h2,
         #recept-output h3,
-        #recept-output h4 {
+        #recept-output h4,
+        .original-recipe-content h1,
+        .original-recipe-content h2,
+        .original-recipe-content h3,
+        .original-recipe-content h4,
+        .refined-recipe-output h1,
+        .refined-recipe-output h2,
+        .refined-recipe-output h3,
+        .refined-recipe-output h4 {
             margin-top: 1em;
             margin-bottom: 0.5em;
         }
 
         #recept-output ul,
-        #recept-output ol {
+        #recept-output ol,
+        .original-recipe-content ul,
+        .original-recipe-content ol,
+        .refined-recipe-output ul,
+        .refined-recipe-output ol {
             margin-left: 20px;
             margin-bottom: 1em;
         }
 
-        #recept-output li {
+        #recept-output li,
+        .original-recipe-content li,
+        .refined-recipe-output li {
             margin-bottom: 0.3em;
         }
 
-        #recept-output strong {
+        #recept-output strong,
+        .original-recipe-content strong,
+        .refined-recipe-output strong {
             font-weight: bold;
         }
 
-        #recept-output p {
+        #recept-output p,
+        .original-recipe-content p,
+        .refined-recipe-output p {
             margin-bottom: 0.8em;
             line-height: 1.6;
+        }
+
+        /* Specifieke stijlen voor recepten in de lijst */
+        .original-recipe-content,
+        .refined-recipe-output {
+            background-color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            max-width: 100%;
+            overflow-wrap: break-word;
+        }
+
+        .refined-recipe-output {
+            background-color: #f0f8ff;
+            /* Lichtblauwe achtergrond voor verfijnde recepten */
+            border-left: 2px solid #007bff;
         }
     </style>
 </head>
