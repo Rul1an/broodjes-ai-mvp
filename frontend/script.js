@@ -18,9 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearRecipesBtn = document.getElementById('clear-recipes-btn');
     const navigationButtons = document.querySelectorAll('.nav-button');
     const views = document.querySelectorAll('.view');
+    const modelSelect = document.getElementById('model-select');
 
     // API Endpoints
-    const generateApiUrl = '/api/generate';
+    const generateStartApiUrl = '/api/generate-start';
+    const generateStatusApiUrl = '/api/generate-status/';
     const getRecipesApiUrl = '/api/getRecipes';
     const getIngredientsApiUrl = '/api/getIngredients';
     const addIngredientApiUrl = '/api/addIngredient';
@@ -28,6 +30,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const deleteIngredientApiUrl = '/api/deleteIngredient';
     const refineRecipeApiUrl = '/api/refineRecipe';
     const clearRecipesApiUrl = '/api/clearRecipes';
+
+    // Variable to hold the polling interval ID
+    let pollingIntervalId = null;
+    const POLLING_INTERVAL_MS = 3000; // Check status every 3 seconds
+    const MAX_POLL_ATTEMPTS = 20; // Stop polling after 60 seconds (20 * 3s)
 
     // --- View Switching Logic ---
     const setActiveView = (viewId) => {
@@ -61,7 +68,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const originalButtonText = clearRecipesBtn.textContent;
         clearRecipesBtn.disabled = true;
+        clearRecipesBtn.textContent = 'Verwijderen...';
         loadingListIndicator.style.display = 'block';
 
         try {
@@ -73,13 +82,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             alert('Alle recepten zijn succesvol verwijderd.');
-            loadRecipes();
+            loadRecipes(); // Reload the (now empty) list
 
         } catch (error) {
             console.error('Error clearing recipes:', error);
             alert(`Kon recepten niet verwijderen: ${error.message}`);
         } finally {
             clearRecipesBtn.disabled = false;
+            clearRecipesBtn.textContent = originalButtonText;
             loadingListIndicator.style.display = 'none';
         }
     };
@@ -131,7 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                     recipeList.appendChild(listItem);
                 });
-                addRefineButtonListeners();
             } else {
                 recipeList.innerHTML = '<li>Nog geen recepten opgeslagen.</li>';
             }
@@ -169,8 +178,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         </td>
                     `;
                 });
-                // Add event listeners to delete buttons AFTER they are in the DOM
-                addDeleteButtonListeners();
             } else {
                 const row = ingredientTableBody.insertRow();
                 row.innerHTML = '<td colspan="4">Nog geen ingrediënten toegevoegd.</td>';
@@ -194,7 +201,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const originalButtonText = addIngredientBtn.textContent;
         addIngredientBtn.disabled = true;
+        addIngredientBtn.textContent = 'Toevoegen...';
         ingredientFeedback.style.display = 'none';
 
         try {
@@ -228,22 +237,26 @@ document.addEventListener('DOMContentLoaded', () => {
             ingredientFeedback.style.display = 'block';
         } finally {
             addIngredientBtn.disabled = false;
+            addIngredientBtn.textContent = originalButtonText;
         }
     };
 
-    const handleDeleteIngredient = async (ingredientId) => {
+    const handleDeleteIngredient = async (ingredientId, button) => {
         if (!confirm('Weet je zeker dat je dit ingrediënt wilt verwijderen?')) {
             return;
         }
 
+        const originalButtonText = button.textContent;
+        button.disabled = true;
+        button.textContent = '...'; // Keep it short for table buttons
+
         try {
-            // Note: ID is passed as query parameter for DELETE
             const response = await fetch(`${deleteIngredientApiUrl}?id=${ingredientId}`, {
                 method: 'DELETE'
             });
 
-            if (!response.ok && response.status !== 204) { // 204 No Content is success for DELETE
-                const errorData = await response.json().catch(() => ({})); // Try to parse error, ignore if no body
+            if (!response.ok && response.status !== 204) {
+                const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
 
@@ -253,17 +266,13 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('Error deleting ingredient:', error);
             alert(`Kon ingrediënt niet verwijderen: ${error.message}`);
+            // Restore text also on error
+            button.disabled = false;
+            button.textContent = originalButtonText;
         }
-    };
-
-    // Function to add listeners to dynamically created delete buttons
-    const addDeleteButtonListeners = () => {
-        document.querySelectorAll('.delete-ingredient-btn').forEach(button => {
-            button.addEventListener('click', (event) => {
-                const ingredientId = event.target.getAttribute('data-id');
-                handleDeleteIngredient(ingredientId);
-            });
-        });
+        // Note: No finally block needed here as loadIngredients() redraws the table
+        // If the delete failed, the button is restored in the catch block.
+        // If successful, the button disappears anyway when the list reloads.
     };
 
     // --- Function for Recipe Refinement ---
@@ -280,7 +289,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const originalButtonText = button.textContent;
         button.disabled = true;
+        button.textContent = 'Verfijnen...';
         loadingDiv.style.display = 'block';
         outputPre.textContent = '';
 
@@ -297,7 +308,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            outputPre.textContent = data.recipe;
+            // Update the output with Markdown rendering
+            if (typeof marked !== 'undefined') {
+                outputPre.innerHTML = marked.parse(data.recipe || '');
+            } else {
+                console.error("Marked library not found for refining output.");
+                outputPre.textContent = data.recipe; // Fallback to text
+            }
             // Optionally display the new estimated cost if needed
             // if (data.estimated_cost) { ... }
 
@@ -306,88 +323,207 @@ document.addEventListener('DOMContentLoaded', () => {
             outputPre.textContent = `Fout bij verfijnen: ${error.message}`;
         } finally {
             button.disabled = false;
+            button.textContent = originalButtonText;
             loadingDiv.style.display = 'none';
         }
     };
 
-    // Function to add listeners to dynamically created refine buttons
-    const addRefineButtonListeners = () => {
-        document.querySelectorAll('.refine-btn').forEach(button => {
-            // Clean up potential old listeners before adding new ones
-            const newButton = button.cloneNode(true);
-            button.parentNode.replaceChild(newButton, button);
+    // --- New Polling Function for Asynchronous Generation ---
+    const pollTaskStatus = async (taskId, pollCount = 0) => {
+        console.log(`Polling task ${taskId}, attempt ${pollCount + 1}`);
 
-            newButton.addEventListener('click', () => {
-                handleRefineRecipe(newButton);
-            });
-        });
-    };
-
-    // Generate button event listener
-    generateBtn.addEventListener('click', async () => {
-        const idea = ideaInput.value.trim();
-        if (!idea) {
-            alert('Voer alsjeblieft een broodjesidee in.');
+        if (pollCount >= MAX_POLL_ATTEMPTS) {
+            console.error(`Polling stopped for task ${taskId} after reaching max attempts.`);
+            recipeOutput.textContent = 'Fout: Recept genereren duurde te lang.';
+            estimatedCostOutput.textContent = '';
+            loadingIndicator.style.display = 'none';
+            generateBtn.disabled = false;
+            clearInterval(pollingIntervalId);
+            pollingIntervalId = null;
             return;
         }
 
-        recipeOutput.textContent = '';
-        estimatedCostOutput.textContent = '';
-        loadingIndicator.style.display = 'block';
-        generateBtn.disabled = true;
-
         try {
-            const response = await fetch(generateApiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idea: idea })
-            });
+            const response = await fetch(generateStatusApiUrl + taskId);
+
+            // Handle cases where the task is not found (maybe backend restarted)
+            if (response.status === 404) {
+                console.error(`Task ${taskId} not found.`);
+                recipeOutput.textContent = 'Fout: Generatie taak niet gevonden. Probeer opnieuw.';
+                estimatedCostOutput.textContent = '';
+                loadingIndicator.style.display = 'none';
+                generateBtn.disabled = false;
+                clearInterval(pollingIntervalId);
+                pollingIntervalId = null;
+                return;
+            }
 
             if (!response.ok) {
-                let errorMsg = `Fout: ${response.status}`;
-                try {
-                    const errorData = await response.json();
-                    errorMsg = errorData.error || errorMsg;
-                } catch (e) { }
-                throw new Error(errorMsg);
+                // Handle other potential server errors during status check
+                throw new Error(`Status check failed: HTTP error! status: ${response.status}`);
             }
 
             const data = await response.json();
-            recipeOutput.textContent = data.recipe;
 
-            // --- Display Estimated Cost ---
-            if (data.estimated_cost !== null && data.estimated_cost !== undefined) {
-                estimatedCostOutput.textContent = `Geschatte Totale Kosten (AI): €${data.estimated_cost.toFixed(2)}`;
+            if (data.status === 'completed') {
+                console.log(`Task ${taskId} completed successfully.`);
+                recipeOutput.textContent = data.recipe || 'Geen recept ontvangen.';
+                if (data.estimated_cost !== null && data.estimated_cost !== undefined) {
+                    estimatedCostOutput.textContent = `Geschatte kosten: €${data.estimated_cost.toFixed(2)}`;
+                } else {
+                    estimatedCostOutput.textContent = ''; // Clear cost if not available
+                }
+                loadingIndicator.style.display = 'none';
+                generateBtn.disabled = false;
+                clearInterval(pollingIntervalId);
+                pollingIntervalId = null;
+
+                // Optionally reload recipe list if needed
+                if (document.getElementById('view-recipes').classList.contains('active-view')) {
+                    loadRecipes();
+                }
+
+            } else if (data.status === 'failed') {
+                console.error(`Task ${taskId} failed:`, data.error);
+                recipeOutput.textContent = `Fout bij genereren: ${data.error || 'Onbekende fout'}`;
+                estimatedCostOutput.textContent = '';
+                loadingIndicator.style.display = 'none';
+                generateBtn.disabled = false;
+                clearInterval(pollingIntervalId);
+                pollingIntervalId = null;
+            } else if (data.status === 'pending') {
+                // Still pending, continue polling
+                // Optionally update the loading indicator text here
+                loadingIndicator.textContent = `Genereren... (${pollCount + 1}/${MAX_POLL_ATTEMPTS})`;
             } else {
-                estimatedCostOutput.textContent = 'Kon geen kosten schatten.';
+                // Unexpected status
+                console.error(`Task ${taskId} has unexpected status:`, data.status);
+                recipeOutput.textContent = `Fout: Onverwachte status (${data.status}).`;
+                estimatedCostOutput.textContent = '';
+                loadingIndicator.style.display = 'none';
+                generateBtn.disabled = false;
+                clearInterval(pollingIntervalId);
+                pollingIntervalId = null;
             }
-            // ---------------------------
-
-            loadRecipes();
 
         } catch (error) {
-            console.error('Error generating recipe:', error);
-            recipeOutput.textContent = `Kon het recept niet genereren: ${error.message}`;
+            console.error('Error polling task status:', error);
+            recipeOutput.textContent = `Fout bij controleren status: ${error.message}`;
             estimatedCostOutput.textContent = '';
-        } finally {
             loadingIndicator.style.display = 'none';
             generateBtn.disabled = false;
+            clearInterval(pollingIntervalId);
+            pollingIntervalId = null;
         }
-    });
+    };
 
-    // Optional: Allow pressing Enter
-    ideaInput.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            generateBtn.click();
+    // --- Modified Recipe Generation Logic (Asynchronous) ---
+    const handleGenerateRecipe = async () => {
+        const idea = ideaInput.value.trim();
+        const selectedModel = modelSelect.value;
+        if (!idea) {
+            alert('Vul een broodje-idee in!');
+            return;
         }
-    });
 
-    // New listener for adding ingredient
+        // Clear previous polling interval if any
+        if (pollingIntervalId) {
+            clearInterval(pollingIntervalId);
+            pollingIntervalId = null;
+        }
+
+        // Update UI for starting generation
+        loadingIndicator.style.display = 'block';
+        loadingIndicator.textContent = 'Starten...'; // Initial message
+        recipeOutput.textContent = '';
+        estimatedCostOutput.textContent = '';
+        generateBtn.disabled = true;
+
+        try {
+            // Call the new start endpoint
+            const response = await fetch(generateStartApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idea: idea, model: selectedModel })
+            });
+
+            // Handle immediate errors from starting the task
+            if (!response.ok) {
+                // 202 Accepted is also OK here, but we handle specific errors
+                if (response.status === 202) {
+                    // This is the expected success case for starting
+                } else {
+                    const errorData = await response.json().catch(() => ({})); // Try parsing error
+                    throw new Error(errorData.error || `Starten mislukt: HTTP error! status: ${response.status}`);
+                }
+            }
+
+            const data = await response.json();
+            const taskId = data.task_id;
+
+            if (!taskId) {
+                throw new Error('Geen taak ID ontvangen van de server.');
+            }
+
+            console.log(`Task ${taskId} started. Starting polling.`);
+            loadingIndicator.textContent = 'Genereren... (0/' + MAX_POLL_ATTEMPTS + ')'; // Update loading message
+
+            // Start polling
+            let currentPollCount = 0;
+            pollingIntervalId = setInterval(() => {
+                pollTaskStatus(taskId, currentPollCount++);
+            }, POLLING_INTERVAL_MS);
+
+            // Initial immediate check (optional, reduces perceived delay)
+            // pollTaskStatus(taskId, currentPollCount++);
+
+        } catch (error) {
+            console.error('Error starting recipe generation:', error);
+            recipeOutput.textContent = `Fout bij starten: ${error.message}`;
+            estimatedCostOutput.textContent = '';
+            loadingIndicator.style.display = 'none';
+            generateBtn.disabled = false;
+            // Ensure polling interval is cleared on start error
+            if (pollingIntervalId) {
+                clearInterval(pollingIntervalId);
+                pollingIntervalId = null;
+            }
+        }
+    };
+
+    // --- Event Listeners ---
+    generateBtn.addEventListener('click', handleGenerateRecipe);
     addIngredientBtn.addEventListener('click', handleAddIngredient);
     clearRecipesBtn.addEventListener('click', handleClearAllRecipes);
 
+    // === NEW: Event Delegation Listeners ===
+    // Listener for clicks within the recipe list (handles refine buttons)
+    recipeList.addEventListener('click', (event) => {
+        const refineButton = event.target.closest('.refine-btn');
+        if (refineButton) {
+            console.log("Refine button clicked (delegated)");
+            handleRefineRecipe(refineButton); // Pass the button element
+        }
+        // Can add more checks here for other buttons within list items if needed
+    });
+
+    // Listener for clicks within the ingredient table body (handles delete buttons)
+    ingredientTableBody.addEventListener('click', (event) => {
+        const deleteButton = event.target.closest('.delete-ingredient-btn');
+        if (deleteButton) {
+            console.log("Delete ingredient button clicked (delegated)");
+            const ingredientId = deleteButton.getAttribute('data-id');
+            if (ingredientId) {
+                handleDeleteIngredient(ingredientId, deleteButton); // Pass ID and button
+            } else {
+                console.error("Delete button clicked but no data-id found.");
+            }
+        }
+        // Can add more checks here for other buttons within table rows if needed
+    });
+    // ======================================
+
     // --- Initial Setup ---
-    setActiveView('view-generate');
+    setActiveView('view-generator');
     // Data for other views will be loaded when they are switched to.
 });

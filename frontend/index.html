@@ -6,6 +6,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Broodjes AI App</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Add Marked.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Basic styling for generated recipe content -->
+    <style>
+        #recept-output h1,
+        #recept-output h2,
+        #recept-output h3,
+        #recept-output h4 {
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+        }
+
+        #recept-output ul,
+        #recept-output ol {
+            margin-left: 20px;
+            margin-bottom: 1em;
+        }
+
+        #recept-output li {
+            margin-bottom: 0.3em;
+        }
+
+        #recept-output strong {
+            font-weight: bold;
+        }
+
+        #recept-output p {
+            margin-bottom: 0.8em;
+            line-height: 1.6;
+        }
+    </style>
 </head>
 
 <body>
@@ -24,12 +55,20 @@
             <div class="input-area">
                 <label for="broodje-idee">Voer je broodjesidee in:</label>
                 <input type="text" id="broodje-idee" placeholder="bv. Broodje pittige kip met avocado">
+
+                <label for="model-select" style="margin-left: 10px;">Kies Model:</label>
+                <select id="model-select">
+                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                </select>
+
                 <button id="generate-btn">Genereer Recept</button>
             </div>
             <div id="resultaat-area">
                 <h3>Gegenereerd Recept:</h3>
                 <div id="loading" style="display: none;">Bezig met genereren...</div>
-                <pre id="recept-output"></pre>
+                <!-- Changed pre to div for HTML rendering -->
+                <div id="recept-output"></div>
                 <p id="estimated-cost-output" style="font-weight: bold; margin-top: 10px;"></p>
             </div>
         </div>
@@ -75,6 +114,7 @@
         </div>
     </main>
 
+    <!-- Load script AFTER the DOM is ready -->
     <script src="script.js"></script>
 </body>
 
