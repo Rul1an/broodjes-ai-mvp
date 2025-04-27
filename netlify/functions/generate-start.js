@@ -44,6 +44,12 @@ exports.handler = async function (event, context) {
         const supabaseUrl = process.env.SUPABASE_URL;
         const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+        // DEBUG LOGGING: Print environment variables received by the function
+        console.log('DEBUG: Received SUPABASE_URL:', supabaseUrl ? 'Set' : 'Not Set or Empty');
+        console.log('DEBUG: Received SUPABASE_SERVICE_ROLE_KEY:', supabaseKey ? 'Set (length: ' + supabaseKey.length + ')' : 'Not Set or Empty');
+        // Optional: Log a portion of the key to verify if it looks correct (be careful not to log the whole key)
+        // console.log('DEBUG: Service Key starts with:', supabaseKey ? supabaseKey.substring(0, 5) : 'N/A');
+
         if (!supabaseUrl || !supabaseKey) {
             console.error('Supabase URL or Service Role Key missing in generate-start function');
             return {
