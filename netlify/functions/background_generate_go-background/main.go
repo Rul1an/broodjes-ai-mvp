@@ -67,8 +67,8 @@ func updateSupabaseTask(taskID string, updateData TaskUpdate) {
 		return
 	}
 
-	// Updated to handle the three return values from Execute
-	data, count, err := supabaseClient.From("async_tasks").
+	// Verwijder de ongebruikte 'data' variabele
+	_, count, err := supabaseClient.From("async_tasks").
 		// Updated to provide the three parameters required by Update
 		Update(updateData, "id", "updated_at").
 		Eq("task_id", taskID).
