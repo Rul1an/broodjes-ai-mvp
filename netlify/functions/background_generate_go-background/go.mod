@@ -1,6 +1,6 @@
 module background_generate_go-background
 
-go 1.24.2
+go 1.22
 
 require (
 	github.com/aws/aws-lambda-go v1.48.0

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -68,16 +67,17 @@ func updateSupabaseTask(taskID string, updateData TaskUpdate) {
 		return
 	}
 
-	var results map[string]interface{} // Or define a specific struct if needed
-	err := supabaseClient.DB.From("async_tasks").
-		Update(updateData).
+	// Updated to handle the three return values from Execute
+	data, count, err := supabaseClient.From("async_tasks").
+		// Updated to provide the three parameters required by Update
+		Update(updateData, "id", "updated_at").
 		Eq("task_id", taskID).
-		Execute(&results)
+		Execute()
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[Go Background] CRITICAL: Failed to update task %s status to %s: %v\n", taskID, updateData.Status, err)
 	} else {
-		fmt.Printf("[Go Background] Task %s status updated to %s in Supabase.\n", taskID, updateData.Status)
+		fmt.Printf("[Go Background] Task %s status updated to %s in Supabase. Updated %d records.\n", taskID, updateData.Status, count)
 	}
 }
 
