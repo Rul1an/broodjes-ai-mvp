@@ -12,12 +12,6 @@
 [functions."generate-start"]
   external_node_modules = ["axios", "@supabase/supabase-js", "uuid"]
 
-# Configuration specific for generatebackgroundnode-background
-[functions."generatebackgroundnode-background"]
-  external_node_modules = ["axios", "@supabase/supabase-js", "openai", "uuid"]
-  # Verhoog de timeout voor de background functie
-  timeout = 900 # 15 minuten (max voor background)
-
 # Configuration specific for get-processed-recipe
 [functions."get-processed-recipe"]
   external_node_modules = ["@supabase/supabase-js"]

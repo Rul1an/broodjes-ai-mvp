@@ -1,7 +1,23 @@
 // Serverless function to start the background recipe generation task
 const { createClient } = require('@supabase/supabase-js');
 const { v4: uuidv4 } = require('uuid');
-const axios = require('axios');
+const { OpenAI } = require('openai');
+
+// Helper function to update Supabase task status and result (simplified)
+async function updateTask(supabase, taskId, updateData) {
+    console.log(`[generate-start] Updating task ${taskId} status to: ${updateData.status}`);
+    const { data, error } = await supabase
+        .from('async_tasks')
+        .update(updateData)
+        .eq('task_id', taskId)
+        .select(); // Select to confirm the update
+
+    if (error) {
+        // Log error but don't necessarily stop the main flow if it's just logging
+        console.error(`[generate-start] Error updating task ${taskId} in Supabase:`, error);
+    }
+    return { data, error };
+}
 
 exports.handler = async function (event, context) {
     // Only allow POST requests
@@ -13,6 +29,9 @@ exports.handler = async function (event, context) {
     }
 
     let body;
+    let supabase; // Define supabase in the outer scope
+    let taskId = 'unknown'; // Define taskId in the outer scope
+
     try {
         // Parse and validate request body
         if (!event.body) {
@@ -44,128 +63,153 @@ exports.handler = async function (event, context) {
         const supabaseUrl = process.env.SUPABASE_URL;
         const supabaseKey = process.env.SERVICE_ROLE_KEY;
 
-        // DEBUG LOGGING: Removed after confirming the issue
-        // console.log('DEBUG: Received SUPABASE_URL:', supabaseUrl ? 'Set' : 'Not Set or Empty');
-        // console.log('DEBUG: Received SERVICE_ROLE_KEY:', supabaseKey ? 'Set (length: ' + supabaseKey.length + ')' : 'Not Set or Empty');
-        // console.log('DEBUG: Service Key starts with:', supabaseKey ? supabaseKey.substring(0, 5) : 'N/A');
-
         if (!supabaseUrl || !supabaseKey) {
-            console.error('Supabase URL or SERVICE_ROLE_KEY missing in generate-start function');
+            console.error('[generate-start] Supabase URL or SERVICE_ROLE_KEY missing');
             return {
                 statusCode: 500,
-                body: JSON.stringify({ error: 'Server configuration error' })
+                body: JSON.stringify({ status: 'failed', error: 'Server configuration error (Supabase creds)' })
             };
         }
-        const supabase = createClient(supabaseUrl, supabaseKey);
+        supabase = createClient(supabaseUrl, supabaseKey);
+
+        // Initialize OpenAI Client
+        const openaiApiKey = process.env.OPENAI_API_KEY;
+        if (!openaiApiKey) {
+            console.error('[generate-start] Missing OpenAI Key env var.');
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ status: 'failed', error: 'Server configuration error (OpenAI key)' })
+            };
+        }
+        const openai = new OpenAI({ apiKey: openaiApiKey });
+        console.log('[generate-start] Supabase and OpenAI clients initialized.');
 
         // Generate a unique task ID for this job
-        const taskId = uuidv4();
+        taskId = uuidv4();
+        console.log(`[generate-start] Starting process for task: ${taskId}`);
 
-        // Create a task record in Supabase to track status
-        const { data, error } = await supabase
+        // Create a task record in Supabase - initially pending, immediately updated to processing
+        const { error: insertError } = await supabase
             .from('async_tasks')
             .insert([{
                 task_id: taskId,
                 idea: idea.trim(),
                 model: requestedModel,
-                status: 'pending',
+                status: 'pending', // Insert as pending first
                 created_at: new Date().toISOString()
             }])
             .select()
             .single();
 
-        if (error) {
-            console.error('Error creating task record in Supabase:', error);
+        if (insertError) {
+            console.error(`[generate-start] Error creating initial task record for ${taskId}:`, insertError);
             return {
                 statusCode: 500,
-                body: JSON.stringify({ error: 'Failed to create task record' })
+                body: JSON.stringify({ status: 'failed', error: 'Failed to create task record' })
             };
         }
 
-        // Haal de basis URL van de site op uit de environment variabelen
-        const siteUrl = process.env.URL; // Netlify provides this automatically
-        if (!siteUrl) {
-            console.error('[generate-start] CRITICAL: Site URL (process.env.URL) is not set. Cannot invoke background function. Task ID:', taskId);
-            // Update task to failed state as we cannot proceed
-            await supabase
-                .from('async_tasks')
-                .update({ status: 'failed', error_message: 'Server configuration error: Site URL not set.', finished_at: new Date().toISOString() })
-                .eq('task_id', taskId);
-            // Return error - background function will not be called.
+        // Immediately update status to processing
+        await updateTask(supabase, taskId, {
+            status: 'processing',
+            started_at: new Date().toISOString()
+        });
+
+        // --- Call OpenAI ---
+        console.log(`[generate-start] Calling OpenAI model ${requestedModel} for task ${taskId}...`);
+        const prompt = `Genereer een creatief en uniek recept voor een broodje gebaseerd op het volgende idee: "${idea}". Het recept moet stapsgewijze instructies bevatten, een lijst van ingrediënten met hoeveelheden, en een aantrekkelijke naam voor het broodje. Output alleen de JSON structuur.
+Denk aan:
+- Originele combinaties
+- Duidelijke stappen
+- Geschikte hoeveelheden voor 1 persoon
+- Een pakkende naam
+
+Output formaat (alleen JSON):
+{
+  "naam": "...",
+  "beschrijving": "...",
+  "ingredienten": [ { "naam": "...", "hoeveelheid": "..." } ],
+  "instructies": [ "stap 1...", "stap 2..." ]
+}
+`;
+
+        let recipeJsonString;
+        let parsedRecipeObject;
+
+        try {
+            const completion = await openai.chat.completions.create({
+                model: requestedModel,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.7,
+                response_format: { type: "json_object" }, // Vraag expliciet JSON output
+            });
+
+            recipeJsonString = completion.choices[0]?.message?.content?.trim();
+            if (!recipeJsonString) {
+                throw new Error('OpenAI response content is empty or missing.');
+            }
+            console.log(`[generate-start] Received response from OpenAI for task ${taskId}.`);
+
+            // Validate if it's valid JSON before updating Supabase
+            try {
+                parsedRecipeObject = JSON.parse(recipeJsonString);
+            } catch (jsonError) {
+                console.error(`[generate-start] OpenAI response is not valid JSON for task ${taskId}. Response:`, recipeJsonString);
+                throw new Error('OpenAI did not return valid JSON.');
+            }
+
+            // --- Update Supabase Task Record - Success ---
+            await updateTask(supabase, taskId, {
+                status: 'completed',
+                recipe: recipeJsonString, // Store the raw JSON string
+                finished_at: new Date().toISOString()
+            });
+            console.log(`[generate-start] Task ${taskId} successfully completed.`);
+
+            // --- Return Processed Recipe --- (No need to fetch costs here, keep it simple)
             return {
-                statusCode: 500,
-                body: JSON.stringify({ error: 'Server configuration error preventing background task invocation.' })
-            };
-        }
-
-        // Roep de nieuwe Node.js background functie aan
-        const relativeBackgroundPath = '/.netlify/functions/generatebackgroundnode-background';
-
-        // Log de URL die we *proberen* te fetchen (voor debug)
-        console.log(`[generate-start] Attempting to invoke background function at relative path: ${relativeBackgroundPath} with base URL: ${siteUrl}`); // Log base URL too
-
-        // Invoke the background task asynchronously using RELATIVE path with AXIOS
-        if (relativeBackgroundPath) {
-            const payload = {
-                task_id: taskId,
-                idea: idea.trim(),
-                model: requestedModel
-            };
-            // Extra log before the actual call
-            console.log(`[generate-start] About to send POST request to background function for task ${taskId}...`);
-            // Verwijder await en try/catch voor axios call - Fire-and-forget
-            axios.post(relativeBackgroundPath, payload, {
-                baseURL: siteUrl, // Use siteUrl as the base
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-                .then(response => {
-                    // Log alleen dat de aanroep is gestart (asynchroon)
-                    console.log(`[generate-start] Background function invocation request sent (axios status: ${response.status})`);
+                statusCode: 200,
+                body: JSON.stringify({
+                    status: 'completed',
+                    recipe: parsedRecipeObject // Return the parsed recipe object
                 })
-                .catch(err => {
-                    // Log de error bij het *versturen* van de request, maar blokkeer niet
-                    let errorMsg = err.message;
-                    let errorDetails = {};
-                    if (err.response) {
-                        errorMsg = `Status: ${err.response.status}, Data: ${JSON.stringify(err.response.data)}`;
-                        errorDetails.status = err.response.status;
-                        errorDetails.data = err.response.data;
-                        errorDetails.headers = err.response.headers;
-                    } else if (err.request) {
-                        errorMsg = 'No response received after sending request to background function';
-                        // err.request might contain info depending on the environment (e.g., Node.js)
-                        errorDetails.requestInfo = 'No response received';
-                    }
-                    // Log more comprehensive error details
-                    console.error(`[generate-start] Error sending POST request to background function ${relativeBackgroundPath}`, {
-                        errorMessage: err.message,
-                        axiosErrorDetails: errorDetails,
-                        axiosConfig: err.config, // Log the config used for the request
-                        baseURL: siteUrl,
-                        taskId: taskId
-                    });
-                });
-        } else {
-            // Dit zou niet mogen gebeuren, maar voor de zekerheid:
-            console.error('Internal error: relativeBackgroundPath is somehow empty.');
-        }
+            };
 
-        // Return success with the task ID immediately
-        return {
-            statusCode: 202, // Accepted
-            body: JSON.stringify({
-                message: 'Recipe generation started',
-                task_id: taskId
-            })
-        };
+        } catch (openaiError) {
+            console.error(`[generate-start] Error during OpenAI call/processing for task ${taskId}:`, openaiError);
+            // Update status to failed
+            await updateTask(supabase, taskId, {
+                status: 'failed',
+                error_message: openaiError.message || 'Unknown error during OpenAI processing',
+                finished_at: new Date().toISOString()
+            });
+            // Return error to the client
+            return {
+                statusCode: 500, // Internal Server Error seems appropriate
+                body: JSON.stringify({
+                    status: 'failed',
+                    error: `Recipe generation failed: ${openaiError.message}`
+                })
+            };
+        }
 
     } catch (error) {
-        console.error('Error in generate-start function:', error);
+        console.error(`[generate-start] Outer catch error for task ${taskId}:`, error);
+        // Attempt to mark as failed if possible (if supabase & taskId are available)
+        if (supabase && taskId !== 'unknown') {
+            try {
+                await updateTask(supabase, taskId, {
+                    status: 'failed',
+                    error_message: `Outer catch: ${error.message}`,
+                    finished_at: new Date().toISOString()
+                });
+            } catch (failLogError) {
+                console.error(`[generate-start] Also failed to log outer failure for task ${taskId}:`, failLogError);
+            }
+        }
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: 'Server error while processing request' })
+            body: JSON.stringify({ status: 'failed', error: `Server error: ${error.message}` })
         };
     }
 };
