@@ -94,25 +94,25 @@ exports.handler = async function (event, context) {
         const backgroundFunctionPath = '/.netlify/functions/generatebackgroundnode';
         const absoluteBackgroundUrl = siteUrl ? `${siteUrl}${backgroundFunctionPath}` : null;
 
-        // Invoke the background task asynchronously
-        if (absoluteBackgroundUrl) { // Gebruik de absolute URL
-            fetch(absoluteBackgroundUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    task_id: taskId,
-                    idea: idea.trim(),
-                    model: requestedModel
-                })
-            }).catch(err => {
-                // Log de error, maar blokkeer de response niet
-                console.error(`Error invoking background function ${absoluteBackgroundUrl}:`, err);
-            });
-        } else {
-            console.error('Could not invoke background function because site URL is missing.');
-        }
+        // Log de URL die we *proberen* te fetchen (voor debug)
+        console.log(`[generate-start] Attempting to invoke background function at: ${backgroundFunctionPath}`);
+        // console.log(`[generate-start] Absolute URL constructed: ${absoluteBackgroundUrl}`); // Log de absolute ter info
+
+        // Invoke the background task asynchronously using RELATIVE path
+        fetch(backgroundFunctionPath, { // Gebruik het RELATIEVE pad
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                task_id: taskId,
+                idea: idea.trim(),
+                model: requestedModel
+            })
+        }).catch(err => {
+            // Log de error, maar blokkeer de response niet
+            console.error(`Error invoking background function ${backgroundFunctionPath}:`, err); // Log relatieve pad bij error
+        });
 
         // Return success with the task ID immediately
         return {
