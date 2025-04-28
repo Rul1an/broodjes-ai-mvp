@@ -1,7 +1,7 @@
 // Serverless function to start the background recipe generation task
 const { createClient } = require('@supabase/supabase-js');
 const { v4: uuidv4 } = require('uuid');
-const fetch = require('node-fetch');
+const axios = require('axios');
 
 exports.handler = async function (event, context) {
     // Only allow POST requests
@@ -97,22 +97,36 @@ exports.handler = async function (event, context) {
         // Log de URL die we *proberen* te fetchen (voor debug)
         console.log(`[generate-start] Attempting to invoke background function at: ${absoluteBackgroundUrl}`); // Log de absolute URL
 
-        // Invoke the background task asynchronously using ABSOLUTE path
+        // Invoke the background task asynchronously using ABSOLUTE path with AXIOS
         if (absoluteBackgroundUrl) { // Check of de absolute URL bestaat
-            fetch(absoluteBackgroundUrl, { // !! GEBRUIK DE ABSOLUTE URL !!
-                method: 'POST',
+            const payload = {
+                task_id: taskId,
+                idea: idea.trim(),
+                model: requestedModel
+            };
+            axios.post(absoluteBackgroundUrl, payload, {
                 headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    task_id: taskId,
-                    idea: idea.trim(),
-                    model: requestedModel
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => {
+                    // Optioneel: log succesvolle aanroep (status 2xx)
+                    console.log(`[generate-start] Background function invocation successful (status: ${response.status})`);
                 })
-            }).catch(err => {
-                // Log de error, maar blokkeer de response niet
-                console.error(`Error invoking background function ${absoluteBackgroundUrl}:`, err); // Log absolute pad bij error
-            });
+                .catch(err => {
+                    // Log de error, maar blokkeer de response niet
+                    // axios errors hebben vaak meer info in err.response of err.request
+                    let errorMsg = err.message;
+                    if (err.response) {
+                        // De request is gemaakt en de server respondeerde met een status code
+                        // die buiten het bereik van 2xx valt
+                        errorMsg = `Status: ${err.response.status}, Data: ${JSON.stringify(err.response.data)}`;
+                    } else if (err.request) {
+                        // De request is gemaakt maar er is geen response ontvangen
+                        errorMsg = 'No response received from background function';
+                    }
+                    console.error(`Error invoking background function ${absoluteBackgroundUrl} with axios:`, errorMsg);
+                });
         } else {
             console.error('Could not invoke background function because site URL is missing.');
         }
