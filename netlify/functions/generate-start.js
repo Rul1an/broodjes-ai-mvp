@@ -90,24 +90,29 @@ exports.handler = async function (event, context) {
             // Overweeg hier eventueel een 500 error terug te geven als de background call essentieel is.
         }
 
-        // Roep de nieuwe Node.js background functie aan met een relatief pad
+        // Roep de nieuwe Node.js background functie aan
         const backgroundFunctionPath = '/.netlify/functions/generatebackgroundnode';
+        const absoluteBackgroundUrl = siteUrl ? `${siteUrl}${backgroundFunctionPath}` : null;
 
         // Invoke the background task asynchronously
-        fetch(backgroundFunctionPath, { // Gebruik direct het relatieve pad
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                task_id: taskId,
-                idea: idea.trim(),
-                model: requestedModel
-            })
-        }).catch(err => {
-            // Log de error, maar blokkeer de response niet
-            console.error(`Error invoking background function ${backgroundFunctionPath}:`, err);
-        });
+        if (absoluteBackgroundUrl) { // Gebruik de absolute URL
+            fetch(absoluteBackgroundUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    task_id: taskId,
+                    idea: idea.trim(),
+                    model: requestedModel
+                })
+            }).catch(err => {
+                // Log de error, maar blokkeer de response niet
+                console.error(`Error invoking background function ${absoluteBackgroundUrl}:`, err);
+            });
+        } else {
+            console.error('Could not invoke background function because site URL is missing.');
+        }
 
         // Return success with the task ID immediately
         return {
