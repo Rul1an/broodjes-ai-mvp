@@ -127,12 +127,25 @@ exports.handler = async function (event, context) {
                 .catch(err => {
                     // Log de error bij het *versturen* van de request, maar blokkeer niet
                     let errorMsg = err.message;
+                    let errorDetails = {};
                     if (err.response) {
                         errorMsg = `Status: ${err.response.status}, Data: ${JSON.stringify(err.response.data)}`;
+                        errorDetails.status = err.response.status;
+                        errorDetails.data = err.response.data;
+                        errorDetails.headers = err.response.headers;
                     } else if (err.request) {
                         errorMsg = 'No response received after sending request to background function';
+                        // err.request might contain info depending on the environment (e.g., Node.js)
+                        errorDetails.requestInfo = 'No response received';
                     }
-                    console.error(`Error sending request to background function ${relativeBackgroundPath} with axios:`, errorMsg, `(Base URL: ${siteUrl})`);
+                    // Log more comprehensive error details
+                    console.error(`[generate-start] Error sending POST request to background function ${relativeBackgroundPath}`, {
+                        errorMessage: err.message,
+                        axiosErrorDetails: errorDetails,
+                        axiosConfig: err.config, // Log the config used for the request
+                        baseURL: siteUrl,
+                        taskId: taskId
+                    });
                 });
         } else {
             // Dit zou niet mogen gebeuren, maar voor de zekerheid:
