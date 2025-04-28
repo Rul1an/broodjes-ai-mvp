@@ -104,29 +104,25 @@ exports.handler = async function (event, context) {
                 idea: idea.trim(),
                 model: requestedModel
             };
-            axios.post(absoluteBackgroundUrl, payload, {
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-                .then(response => {
-                    // Optioneel: log succesvolle aanroep (status 2xx)
-                    console.log(`[generate-start] Background function invocation successful (status: ${response.status})`);
-                })
-                .catch(err => {
-                    // Log de error, maar blokkeer de response niet
-                    // axios errors hebben vaak meer info in err.response of err.request
-                    let errorMsg = err.message;
-                    if (err.response) {
-                        // De request is gemaakt en de server respondeerde met een status code
-                        // die buiten het bereik van 2xx valt
-                        errorMsg = `Status: ${err.response.status}, Data: ${JSON.stringify(err.response.data)}`;
-                    } else if (err.request) {
-                        // De request is gemaakt maar er is geen response ontvangen
-                        errorMsg = 'No response received from background function';
+            try {
+                // Wacht wel op de aanroep zelf, ook al verwerken we de response niet direct hier
+                const response = await axios.post(absoluteBackgroundUrl, payload, {
+                    headers: {
+                        'Content-Type': 'application/json'
                     }
-                    console.error(`Error invoking background function ${absoluteBackgroundUrl} with axios:`, errorMsg);
                 });
+                console.log(`[generate-start] Background function invocation started (axios response status: ${response.status})`);
+            } catch (err) {
+                // Log de error, maar blokkeer de response niet
+                // axios errors hebben vaak meer info in err.response of err.request
+                let errorMsg = err.message;
+                if (err.response) {
+                    errorMsg = `Status: ${err.response.status}, Data: ${JSON.stringify(err.response.data)}`;
+                } else if (err.request) {
+                    errorMsg = 'No response received from background function';
+                }
+                console.error(`Error invoking background function ${absoluteBackgroundUrl} with axios:`, errorMsg);
+            }
         } else {
             console.error('Could not invoke background function because site URL is missing.');
         }
