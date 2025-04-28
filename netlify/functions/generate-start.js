@@ -83,18 +83,26 @@ exports.handler = async function (event, context) {
         }
 
         // Haal de basis URL van de site op uit de environment variabelen
-        const siteUrl = process.env.URL;
+        const siteUrl = process.env.URL; // Netlify provides this automatically
         if (!siteUrl) {
-            console.error('Site URL (process.env.URL) is not set. Cannot invoke background function.');
-            // We kunnen de taak nog steeds aanmaken, maar de achtergrondfunctie wordt niet aangeroepen.
-            // Overweeg hier eventueel een 500 error terug te geven als de background call essentieel is.
+            console.error('[generate-start] CRITICAL: Site URL (process.env.URL) is not set. Cannot invoke background function. Task ID:', taskId);
+            // Update task to failed state as we cannot proceed
+            await supabase
+                .from('async_tasks')
+                .update({ status: 'failed', error_message: 'Server configuration error: Site URL not set.', finished_at: new Date().toISOString() })
+                .eq('task_id', taskId);
+            // Return error - background function will not be called.
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ error: 'Server configuration error preventing background task invocation.' })
+            };
         }
 
         // Roep de nieuwe Node.js background functie aan
         const relativeBackgroundPath = '/.netlify/functions/generatebackgroundnode-background';
 
         // Log de URL die we *proberen* te fetchen (voor debug)
-        console.log(`[generate-start] Attempting to invoke background function at relative path: ${relativeBackgroundPath}`); // Log relatief pad
+        console.log(`[generate-start] Attempting to invoke background function at relative path: ${relativeBackgroundPath} with base URL: ${siteUrl}`); // Log base URL too
 
         // Invoke the background task asynchronously using RELATIVE path with AXIOS
         if (relativeBackgroundPath) {
@@ -103,9 +111,11 @@ exports.handler = async function (event, context) {
                 idea: idea.trim(),
                 model: requestedModel
             };
+            // Extra log before the actual call
+            console.log(`[generate-start] About to send POST request to background function for task ${taskId}...`);
             // Verwijder await en try/catch voor axios call - Fire-and-forget
             axios.post(relativeBackgroundPath, payload, {
-                baseURL: siteUrl,
+                baseURL: siteUrl, // Use siteUrl as the base
                 headers: {
                     'Content-Type': 'application/json'
                 }
