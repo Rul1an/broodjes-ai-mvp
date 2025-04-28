@@ -17,62 +17,82 @@ async function updateSupabaseTask(supabase, taskId, updateData) {
 }
 
 exports.handler = async function (event, context) {
-    // --- TOP LEVEL LOG ---
-    console.log(`[generatebackgroundnode-background] Function START.`);
+    // --- VERY FIRST ACTION: Try to get task_id and update status ---
+    let taskId = 'unknown';
+    let initialPayload;
+    let supabase;
 
-    // --- TOP LEVEL TRY/CATCH ---
     try {
-        // Only process POST requests expected from generate-start
-        if (event.httpMethod !== 'POST') {
-            console.log(`[generatebackgroundnode-background] Received non-POST request: ${event.httpMethod}`);
-            // Background functions don't strictly need to return, but good practice
-            return { statusCode: 405 };
+        if (!event.body) {
+            console.error('[generatebackgroundnode-background] EARLY CHECK: Event body is missing.');
+            return { statusCode: 400 };
         }
+        initialPayload = JSON.parse(event.body);
+        taskId = initialPayload?.task_id;
 
-        // --- Initialize Clients ---
-        console.log(`[generatebackgroundnode-background] Initializing clients...`);
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseKey = process.env.SERVICE_ROLE_KEY;
-        const openaiApiKey = process.env.OPENAI_API_KEY;
-
-        if (!supabaseUrl || !supabaseKey || !openaiApiKey) {
-            console.error('[generatebackgroundnode-background] Missing required environment variables (Supabase URL/Key or OpenAI Key).');
-            // No point continuing if keys are missing
-            return { statusCode: 500 };
-        }
-
-        const supabase = createClient(supabaseUrl, supabaseKey);
-        const openai = new OpenAI({ apiKey: openaiApiKey });
-        console.log(`[generatebackgroundnode-background] Clients initialized.`);
-
-        // --- Parse Payload ---
-        let payload;
-        try {
-            if (!event.body) {
-                console.error('[generatebackgroundnode-background] Event body is missing.');
-                return { statusCode: 400 }; // Bad Request
-            }
-            payload = JSON.parse(event.body);
-            console.log(`[generatebackgroundnode-background] Parsed payload for task: ${payload.task_id}`);
-        } catch (parseError) {
-            console.error('[generatebackgroundnode-background] Error parsing event body:', parseError);
-            return { statusCode: 400 }; // Bad Request
-        }
-
-        const { task_id, idea, model } = payload;
-
-        if (!task_id || !idea || !model) {
-            console.error(`[generatebackgroundnode-background] Missing task_id, idea, or model in payload. Task ID: ${task_id}`);
-            await updateSupabaseTask(supabase, task_id, { status: 'failed', error_message: 'Invalid payload received by background function.', finished_at: new Date().toISOString() });
+        if (!taskId) {
+            console.error('[generatebackgroundnode-background] EARLY CHECK: Task ID missing in payload.', event.body);
             return { statusCode: 400 };
         }
 
-        // --- Update Status to 'processing' ---
-        console.log(`[generatebackgroundnode-background] Updating task ${task_id} status to processing.`);
-        await updateSupabaseTask(supabase, task_id, { status: 'processing', started_at: new Date().toISOString() });
+        console.log(`[generatebackgroundnode-background] Function START for task: ${taskId}.`); // Moved log here
+
+        // Initialize Supabase Client EARLY
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const supabaseKey = process.env.SERVICE_ROLE_KEY;
+        if (!supabaseUrl || !supabaseKey) {
+            console.error('[generatebackgroundnode-background] EARLY CHECK: Missing Supabase environment variables.');
+            // Don't update status if we can't connect
+            return { statusCode: 500 };
+        }
+        supabase = createClient(supabaseUrl, supabaseKey);
+
+        // --- ATTEMPT IMMEDIATE STATUS UPDATE ---
+        console.log(`[generatebackgroundnode-background] Attempting immediate status update to 'processing' for task ${taskId}.`);
+        const { error: updateError } = await updateSupabaseTask(supabase, taskId, {
+            status: 'processing',
+            started_at: new Date().toISOString()
+        });
+
+        if (updateError) {
+            console.error(`[generatebackgroundnode-background] FAILED immediate status update for task ${taskId}:`, updateError);
+            // If we can't even update status, something is very wrong. Exit.
+            return { statusCode: 500 };
+        }
+        console.log(`[generatebackgroundnode-background] Successfully updated status to 'processing' for task ${taskId}.`);
+
+    } catch (earlyError) {
+        console.error(`[generatebackgroundnode-background] Error during initial processing/status update for task ${taskId}:`, earlyError);
+        // Attempt to mark as failed if we have supabase and taskId
+        if (supabase && taskId !== 'unknown') {
+            try {
+                await updateSupabaseTask(supabase, taskId, {
+                    status: 'failed',
+                    error_message: `Failed during initial processing: ${earlyError.message}`,
+                    finished_at: new Date().toISOString()
+                });
+            } catch (failLogError) {
+                console.error(`[generatebackgroundnode-background] Also failed to log initial failure for task ${taskId}:`, failLogError);
+            }
+        }
+        return { statusCode: 500 };
+    }
+
+    // --- CONTINUE WITH NORMAL LOGIC (Now that status is processing) ---
+    try {
+        // Clients are already initialized if we reached here
+        const openaiApiKey = process.env.OPENAI_API_KEY;
+        if (!openaiApiKey) {
+            console.error('[generatebackgroundnode-background] Missing OpenAI Key env var.');
+            throw new Error('OpenAI API Key missing.'); // Let outer catch handle failure update
+        }
+        const openai = new OpenAI({ apiKey: openaiApiKey });
+        console.log(`[generatebackgroundnode-background] OpenAI client initialized.`);
+
+        const { idea, model } = initialPayload; // Use payload parsed earlier
 
         // --- Call OpenAI ---
-        console.log(`[generatebackgroundnode-background] Calling OpenAI model ${model} for task ${task_id}...`);
+        console.log(`[generatebackgroundnode-background] Calling OpenAI model ${model} for task ${taskId}...`);
         const prompt = `Genereer een creatief en uniek recept voor een broodje gebaseerd op het volgende idee: "${idea}". Het recept moet stapsgewijze instructies bevatten, een lijst van ingrediënten met hoeveelheden, en een aantrekkelijke naam voor het broodje. Output alleen de JSON structuur.
         Denk aan:
         - Originele combinaties
@@ -102,68 +122,43 @@ exports.handler = async function (event, context) {
             if (!recipeJsonString) {
                 throw new Error('OpenAI response content is empty or missing.');
             }
-            console.log(`[generatebackgroundnode-background] Received response from OpenAI for task ${task_id}.`);
+            console.log(`[generatebackgroundnode-background] Received response from OpenAI for task ${taskId}.`);
 
             // Validate if it's valid JSON before updating Supabase
             try {
                 JSON.parse(recipeJsonString);
             } catch (jsonError) {
-                console.error(`[generatebackgroundnode-background] OpenAI response is not valid JSON for task ${task_id}. Response:`, recipeJsonString);
+                console.error(`[generatebackgroundnode-background] OpenAI response is not valid JSON for task ${taskId}. Response:`, recipeJsonString);
                 throw new Error('OpenAI did not return valid JSON.');
             }
 
             // --- Update Supabase Task Record - Success ---
-            console.log(`[generatebackgroundnode-background] Updating task ${task_id} status to completed.`);
-            await updateSupabaseTask(supabase, task_id, {
+            console.log(`[generatebackgroundnode-background] Updating task ${taskId} status to completed.`);
+            await updateSupabaseTask(supabase, taskId, {
                 status: 'completed',
                 recipe: recipeJsonString,
                 finished_at: new Date().toISOString()
             });
-            console.log(`[generatebackgroundnode-background] Task ${task_id} successfully completed.`);
+            console.log(`[generatebackgroundnode-background] Task ${taskId} successfully completed.`);
 
         } catch (openaiError) {
-            console.error(`[generatebackgroundnode-background] Error during OpenAI call or processing for task ${task_id}:`, openaiError);
-            // --- Update Supabase Task Record - Failure ---
-            await updateSupabaseTask(supabase, task_id, {
-                status: 'failed',
-                error_message: openaiError.message || 'Unknown error during OpenAI processing',
-                finished_at: new Date().toISOString()
-            });
-            return { statusCode: 500 }; // Indicate internal error
+            console.error(`[generatebackgroundnode-background] Error during OpenAI call/processing for task ${taskId}:`, openaiError);
+            // Throw the error to be caught by the outer catch, which will mark as failed
+            throw openaiError;
         }
 
-        // Background functions typically don't need to return anything meaningful if successful
-        console.log(`[generatebackgroundnode-background] Function END normally for task ${task_id}.`);
+        console.log(`[generatebackgroundnode-background] Function END normally for task ${taskId}.`);
         return { statusCode: 200 };
 
-    } catch (topLevelError) {
-        // --- CATCH ALL ERRORS ---
-        console.error('[generatebackgroundnode-background] TOP LEVEL CATCH: Unhandled error in background function:', topLevelError);
-
-        // Attempt to update Supabase even in top-level catch, if task_id is available
-        // Note: event.body might not be parsed here if the error happened early
-        let taskIdFromError = 'unknown';
-        try {
-            if (event.body) {
-                const potentialPayload = JSON.parse(event.body);
-                taskIdFromError = potentialPayload.task_id || 'unknown_after_parse';
-
-                const supabaseUrl = process.env.SUPABASE_URL;
-                const supabaseKey = process.env.SERVICE_ROLE_KEY;
-                if (supabaseUrl && supabaseKey && taskIdFromError !== 'unknown' && taskIdFromError !== 'unknown_after_parse') {
-                    const supabase = createClient(supabaseUrl, supabaseKey);
-                    await updateSupabaseTask(supabase, taskIdFromError, {
-                        status: 'failed',
-                        error_message: `Unhandled top-level error: ${topLevelError.message}`,
-                        finished_at: new Date().toISOString()
-                    });
-                }
-            }
-        } catch (loggingError) {
-            console.error('[generatebackgroundnode-background] Error trying to log failure to Supabase in top-level catch:', loggingError);
-        }
-
-        // Even if logging fails, return an error status
+    } catch (processingError) {
+        // --- CATCH ERRORS AFTER INITIAL STATUS UPDATE ---
+        console.error(`[generatebackgroundnode-background] Error during main processing for task ${taskId}:`, processingError);
+        // Update status to failed using existing supabase client and taskId
+        await updateSupabaseTask(supabase, taskId, {
+            status: 'failed',
+            error_message: processingError.message || 'Unknown error during processing',
+            finished_at: new Date().toISOString()
+        });
         return { statusCode: 500 };
     }
 };
