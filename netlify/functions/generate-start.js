@@ -91,7 +91,7 @@ exports.handler = async function (event, context) {
         }
 
         // Roep de nieuwe Node.js background functie aan
-        const relativeBackgroundPath = '/.netlify/functions/generatebackgroundnode';
+        const relativeBackgroundPath = '/.netlify/functions/generatebackgroundnode-background';
 
         // Log de URL die we *proberen* te fetchen (voor debug)
         console.log(`[generate-start] Attempting to invoke background function at relative path: ${relativeBackgroundPath}`); // Log relatief pad
