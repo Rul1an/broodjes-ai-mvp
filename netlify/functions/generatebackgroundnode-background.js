@@ -116,7 +116,7 @@ exports.handler = async function (event, context) {
             console.log(`[generatebackgroundnode-background] Updating task ${task_id} status to completed.`);
             await updateSupabaseTask(supabase, task_id, {
                 status: 'completed',
-                result_data: recipeJsonString, // Store raw JSON string
+                recipe: recipeJsonString,
                 finished_at: new Date().toISOString()
             });
             console.log(`[generatebackgroundnode-background] Task ${task_id} successfully completed.`);

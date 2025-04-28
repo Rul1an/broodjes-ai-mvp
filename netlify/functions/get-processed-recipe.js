@@ -26,7 +26,7 @@ exports.handler = async function (event, context) {
         console.log(`[get-processed-recipe] Checking status for task: ${taskId}`);
         const { data: taskData, error: taskError } = await supabase
             .from('async_tasks')
-            .select('status, result_data, error_message')
+            .select('status, recipe, error_message')
             .eq('task_id', taskId)
             .single(); // Expect only one task
 
@@ -40,7 +40,7 @@ exports.handler = async function (event, context) {
             return { statusCode: 500, body: JSON.stringify({ error: 'Database error fetching task status' }) };
         }
 
-        const { status, result_data, error_message } = taskData;
+        const { status, recipe: recipe_data, error_message } = taskData;
 
         // 4. Handle Different Statuses
         if (status === 'pending' || status === 'processing') {
@@ -55,16 +55,16 @@ exports.handler = async function (event, context) {
 
         if (status === 'completed') {
             console.log(`[get-processed-recipe] Task ${taskId} completed. Processing result...`);
-            if (!result_data) {
-                console.error(`[get-processed-recipe] Task ${taskId} is completed but result_data is empty.`);
+            if (!recipe_data) {
+                console.error(`[get-processed-recipe] Task ${taskId} is completed but recipe data is empty.`);
                 return { statusCode: 500, body: JSON.stringify({ status: 'error', error: 'Completed task has no result data.' }) };
             }
 
             let recipe;
             try {
-                recipe = JSON.parse(result_data);
+                recipe = JSON.parse(recipe_data);
             } catch (parseError) {
-                console.error(`[get-processed-recipe] Error parsing result_data JSON for task ${taskId}:`, parseError);
+                console.error(`[get-processed-recipe] Error parsing recipe_data JSON for task ${taskId}:`, parseError);
                 return { statusCode: 500, body: JSON.stringify({ status: 'error', error: 'Failed to parse recipe data.' }) };
             }
 
