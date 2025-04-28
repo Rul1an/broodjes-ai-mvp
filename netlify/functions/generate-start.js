@@ -95,6 +95,7 @@ exports.handler = async function (event, context) {
         const absoluteBackgroundUrl = siteUrl ? `${siteUrl}${backgroundFunctionPath}` : null;
 
         // Invoke the background task asynchronously
+        /* // Start uitcommentariëren van fetch blok
         if (absoluteBackgroundUrl) { // Gebruik de absolute URL
             fetch(absoluteBackgroundUrl, {
                 method: 'POST',
@@ -113,6 +114,7 @@ exports.handler = async function (event, context) {
         } else {
             console.error('Could not invoke background function because site URL is missing.');
         }
+        */ // Einde uitcommentariëren van fetch blok
 
         // Return success with the task ID immediately
         return {
