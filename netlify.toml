@@ -18,6 +18,10 @@
   # Verhoog de timeout voor de background functie
   timeout = 900 # 15 minuten (max voor background)
 
+# Configuration specific for get-processed-recipe
+[functions."get-processed-recipe"]
+  external_node_modules = ["@supabase/supabase-js"]
+
 # Keep the redirects rule (This is needed for frontend calls like /api/generate-start)
 [[redirects]]
   from = "/api/*"
