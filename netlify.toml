@@ -19,7 +19,7 @@
   timeout = 900 # 15 minuten (max voor background)
 
 # Keep the redirects rule
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
+# [[redirects]]
+#  from = "/api/*"
+#  to = "/.netlify/functions/:splat"
+#  status = 200
