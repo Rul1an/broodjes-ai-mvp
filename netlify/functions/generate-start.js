@@ -90,31 +90,24 @@ exports.handler = async function (event, context) {
             // Overweeg hier eventueel een 500 error terug te geven als de background call essentieel is.
         }
 
-        const backgroundFunctionUrl = siteUrl ? `${siteUrl}/.netlify/functions/generatebackgroundgo` : null;
+        // Roep de nieuwe Node.js background functie aan met een relatief pad
+        const backgroundFunctionPath = '/.netlify/functions/generatebackgroundnode';
 
-        // Invoke the background task asynchronously via our background function
-        // This happens asynchronously and will not block the response
-        if (backgroundFunctionUrl) {
-            fetch(backgroundFunctionUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    task_id: taskId,
-                    idea: idea.trim(),
-                    model: requestedModel
-                })
-            }).catch(err => {
-                console.error('Error invoking background function:', err);
-                // We don't wait for this, so we just log the error
-                // The task status will remain 'pending' in the database
-            });
-        } else {
-            console.error('Could not invoke background function because site URL is missing.');
-            // Optioneel: Update de taakstatus naar 'failed' omdat de achtergrond niet kon starten?
-            // Dit hangt af van de gewenste logica.
-        }
+        // Invoke the background task asynchronously
+        fetch(backgroundFunctionPath, { // Gebruik direct het relatieve pad
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                task_id: taskId,
+                idea: idea.trim(),
+                model: requestedModel
+            })
+        }).catch(err => {
+            // Log de error, maar blokkeer de response niet
+            console.error(`Error invoking background function ${backgroundFunctionPath}:`, err);
+        });
 
         // Return success with the task ID immediately
         return {
