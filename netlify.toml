@@ -18,8 +18,8 @@
   # Verhoog de timeout voor de background functie
   timeout = 900 # 15 minuten (max voor background)
 
-# Keep the redirects rule
-# [[redirects]]
-#  from = "/api/*"
-#  to = "/.netlify/functions/:splat"
-#  status = 200
+# Keep the redirects rule (This is needed for frontend calls like /api/generate-start)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
