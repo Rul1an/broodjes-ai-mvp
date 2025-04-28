@@ -2,7 +2,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateBtn = document.getElementById('generate-btn');
     const ideaInput = document.getElementById('broodje-idee');
     const recipeOutput = document.getElementById('recept-output');
-    const estimatedCostOutput = document.getElementById('estimated-cost-output');
     const loadingIndicator = document.getElementById('loading');
     const loadingListIndicator = document.getElementById('loading-list');
     const recipeList = document.getElementById('recepten-lijst');
@@ -22,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // API Endpoints
     const generateStartApiUrl = '/api/generate-start';
-    const generateStatusApiUrl = '/api/generate-status/';
+    const getProcessedRecipeApiUrl = '/api/get-processed-recipe';
     const getRecipesApiUrl = '/api/getRecipes';
     const getIngredientsApiUrl = '/api/getIngredients';
     const addIngredientApiUrl = '/api/addIngredient';
@@ -34,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Variable to hold the polling interval ID
     let pollingIntervalId = null;
     const POLLING_INTERVAL_MS = 3000; // Check status every 3 seconds
-    const MAX_POLL_ATTEMPTS = 20; // Stop polling after 60 seconds (20 * 3s)
+    const MAX_POLL_ATTEMPTS = 40; // Stop polling after 120 seconds (40 * 3s)
 
     // --- View Switching Logic ---
     const setActiveView = (viewId) => {
@@ -328,202 +327,201 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- New Polling Function for Asynchronous Generation ---
-    const pollTaskStatus = async (taskId, pollCount = 0) => {
-        console.log(`Polling task ${taskId}, attempt ${pollCount + 1}`);
+    // --- NEW POLLING FUNCTION ---
+    const pollRecipeStatus = async (taskId, attempts = 0) => {
+        console.log(`Polling attempt ${attempts + 1} for task ${taskId}`);
 
-        if (pollCount >= MAX_POLL_ATTEMPTS) {
-            console.error(`Polling stopped for task ${taskId} after reaching max attempts.`);
-            recipeOutput.textContent = 'Fout: Recept genereren duurde te lang.';
-            estimatedCostOutput.textContent = '';
-            loadingIndicator.style.display = 'none';
-            generateBtn.disabled = false;
+        if (attempts >= MAX_POLL_ATTEMPTS) {
+            console.error(`Max poll attempts reached for task ${taskId}.`);
             clearInterval(pollingIntervalId);
             pollingIntervalId = null;
+            loadingIndicator.style.display = 'none';
+            recipeOutput.innerHTML = '<p class="error">Het duurde te lang om het recept op te halen. Probeer het opnieuw.</p>';
+            generateBtn.disabled = false;
             return;
         }
 
         try {
-            const response = await fetch(generateStatusApiUrl + taskId);
-
-            // Handle cases where the task is not found (maybe backend restarted)
-            if (response.status === 404) {
-                console.error(`Task ${taskId} not found.`);
-                recipeOutput.textContent = 'Fout: Generatie taak niet gevonden. Probeer opnieuw.';
-                estimatedCostOutput.textContent = '';
-                loadingIndicator.style.display = 'none';
-                generateBtn.disabled = false;
-                clearInterval(pollingIntervalId);
-                pollingIntervalId = null;
-                return;
-            }
+            const response = await fetch(`${getProcessedRecipeApiUrl}?task_id=${taskId}`);
 
             if (!response.ok) {
-                // Handle other potential server errors during status check
-                throw new Error(`Status check failed: HTTP error! status: ${response.status}`);
+                // Handle specific errors like 404 (task not found yet?)
+                if (response.status === 404) {
+                    console.warn(`Task ${taskId} not found yet (404), continuing poll.`);
+                    // No error message shown yet, just continue polling
+                    return;
+                }
+                // Other HTTP errors
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP Fout: ${response.status}`);
             }
 
             const data = await response.json();
 
-            if (data.status === 'completed') {
-                console.log(`Task ${taskId} completed successfully.`);
-                recipeOutput.textContent = data.recipe || 'Geen recept ontvangen.';
-                if (data.estimated_cost !== null && data.estimated_cost !== undefined) {
-                    estimatedCostOutput.textContent = `Geschatte kosten: €${data.estimated_cost.toFixed(2)}`;
-                } else {
-                    estimatedCostOutput.textContent = ''; // Clear cost if not available
-                }
-                loadingIndicator.style.display = 'none';
-                generateBtn.disabled = false;
-                clearInterval(pollingIntervalId);
-                pollingIntervalId = null;
-
-                // Optionally reload recipe list if needed
-                if (document.getElementById('view-recipes').classList.contains('active-view')) {
-                    loadRecipes();
-                }
-
+            if (data.status === 'pending' || data.status === 'processing') {
+                // Task is still running, wait for the next poll
+                recipeOutput.innerHTML = `<p>Status: ${data.status}... Het recept wordt gegenereerd.</p>`;
+                // Keep polling
             } else if (data.status === 'failed') {
                 console.error(`Task ${taskId} failed:`, data.error);
-                recipeOutput.textContent = `Fout bij genereren: ${data.error || 'Onbekende fout'}`;
-                estimatedCostOutput.textContent = '';
-                loadingIndicator.style.display = 'none';
-                generateBtn.disabled = false;
                 clearInterval(pollingIntervalId);
                 pollingIntervalId = null;
-            } else if (data.status === 'pending') {
-                // Still pending, continue polling
-                // Optionally update the loading indicator text here
-                loadingIndicator.textContent = `Genereren... (${pollCount + 1}/${MAX_POLL_ATTEMPTS})`;
+                loadingIndicator.style.display = 'none';
+                recipeOutput.innerHTML = `<p class="error">Recept genereren mislukt: ${data.error || 'Onbekende fout'}</p>`;
+                generateBtn.disabled = false;
+            } else if (data.status === 'completed') {
+                console.log(`Task ${taskId} completed!`);
+                clearInterval(pollingIntervalId);
+                pollingIntervalId = null;
+                loadingIndicator.style.display = 'none';
+
+                // Generate Markdown from the processed recipe data
+                const recipe = data.recipe;
+                let markdown = `## ${recipe.naam || 'Naamloos Broodje'}\n\n`;
+                if (recipe.beschrijving) {
+                    markdown += `${recipe.beschrijving}\n\n`;
+                }
+                markdown += `### Ingrediënten\n`;
+                recipe.ingredienten.forEach(ing => {
+                    markdown += `- ${ing.naam}: ${ing.hoeveelheid}`;
+                    if (ing.cost && ing.cost !== 'N/A') {
+                        markdown += ` (kosten: €${ing.cost})`;
+                    }
+                    if (ing.unit && ing.cost === 'N/A') { // Show unit if cost is N/A
+                        markdown += ` (${ing.unit})`;
+                    } else if (ing.unit) { // Show unit if cost is present
+                        markdown += ` per ${ing.unit}`;
+                    }
+                    markdown += '\n';
+                });
+                if (recipe.totalCost) {
+                    markdown += `\n**Geschatte Totale Kosten:** €${recipe.totalCost}\n`;
+                }
+                markdown += `\n### Instructies\n`;
+                recipe.instructies.forEach((stap, index) => {
+                    markdown += `${index + 1}. ${stap}\n`;
+                });
+
+                recipeOutput.innerHTML = marked.parse(markdown);
+                generateBtn.disabled = false;
             } else {
-                // Unexpected status
-                console.error(`Task ${taskId} has unexpected status:`, data.status);
-                recipeOutput.textContent = `Fout: Onverwachte status (${data.status}).`;
-                estimatedCostOutput.textContent = '';
-                loadingIndicator.style.display = 'none';
-                generateBtn.disabled = false;
+                // Unknown status - should not happen with current backend logic
+                console.warn(`Unknown status received for task ${taskId}:`, data.status);
+                // Continue polling for a bit? Or stop?
+                // Let's stop for now to avoid infinite loops on weird states
                 clearInterval(pollingIntervalId);
                 pollingIntervalId = null;
+                loadingIndicator.style.display = 'none';
+                recipeOutput.innerHTML = `<p class="error">Onbekende status (${data.status}) ontvangen. Probeer het opnieuw.</p>`;
+                generateBtn.disabled = false;
             }
 
         } catch (error) {
-            console.error('Error polling task status:', error);
-            recipeOutput.textContent = `Fout bij controleren status: ${error.message}`;
-            estimatedCostOutput.textContent = '';
-            loadingIndicator.style.display = 'none';
-            generateBtn.disabled = false;
-            clearInterval(pollingIntervalId);
-            pollingIntervalId = null;
+            console.error('Error during polling:', error);
+            // Don't stop polling on network errors immediately, could be temporary
+            // Maybe add a counter for consecutive network errors?
+            // For now, just log it and let the max attempts handle it.
+            recipeOutput.innerHTML = `<p class="error">Fout bij controleren status: ${error.message}. Poging ${attempts + 1}/${MAX_POLL_ATTEMPTS}</p>`;
+            // Consider stopping polling if error persists
+            /*
+            if (error might be permanent) {
+                 clearInterval(pollingIntervalId);
+                 pollingIntervalId = null;
+                 loadingIndicator.style.display = 'none';
+                 generateBtn.disabled = false;
+            }
+            */
         }
     };
 
-    // --- Modified Recipe Generation Logic (Asynchronous) ---
+    // --- MODIFIED handleGenerateRecipe function ---
     const handleGenerateRecipe = async () => {
         const idea = ideaInput.value.trim();
         const selectedModel = modelSelect.value;
+
         if (!idea) {
-            alert('Vul een broodje-idee in!');
+            alert('Voer een idee voor je broodje in!');
             return;
         }
 
-        // Clear previous polling interval if any
+        // Stop any previous polling
         if (pollingIntervalId) {
             clearInterval(pollingIntervalId);
             pollingIntervalId = null;
         }
 
-        // Update UI for starting generation
         loadingIndicator.style.display = 'block';
-        loadingIndicator.textContent = 'Starten...'; // Initial message
-        recipeOutput.textContent = '';
-        estimatedCostOutput.textContent = '';
+        recipeOutput.innerHTML = ''; // Clear previous output
         generateBtn.disabled = true;
 
         try {
-            // Call the new start endpoint
+            console.log(`Sending request to ${generateStartApiUrl} with idea: ${idea}, model: ${selectedModel}`);
             const response = await fetch(generateStartApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ idea: idea, model: selectedModel })
             });
 
-            // Handle immediate errors from starting the task
             if (!response.ok) {
-                // 202 Accepted is also OK here, but we handle specific errors
-                if (response.status === 202) {
-                    // This is the expected success case for starting
-                } else {
-                    const errorData = await response.json().catch(() => ({})); // Try parsing error
-                    throw new Error(errorData.error || `Starten mislukt: HTTP error! status: ${response.status}`);
-                }
+                let errorMsg = `Starten mislukt: HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = `Starten mislukt: ${errorData.error || response.statusText}`;
+                } catch (e) { /* Ignore parsing error if body isn't JSON */ }
+                throw new Error(errorMsg);
             }
 
             const data = await response.json();
-            const taskId = data.task_id;
 
-            if (!taskId) {
-                throw new Error('Geen taak ID ontvangen van de server.');
+            if (data.task_id) {
+                console.log(`Task started with ID: ${data.task_id}. Starting polling.`);
+                recipeOutput.innerHTML = '<p>Taak gestart... Recept wordt opgehaald.</p>';
+                // Start polling
+                let attempts = 0;
+                // Initial immediate check
+                await pollRecipeStatus(data.task_id, attempts++);
+                // Set interval only if not already completed/failed on first check
+                if (pollingIntervalId === null) { // Check if pollRecipeStatus didn't clear the interval
+                    pollingIntervalId = setInterval(() => {
+                        pollRecipeStatus(data.task_id, attempts++);
+                    }, POLLING_INTERVAL_MS);
+                }
+            } else {
+                // Should not happen if backend returns 202 correctly
+                throw new Error('Geen task_id ontvangen van de server.');
             }
-
-            console.log(`Task ${taskId} started. Starting polling.`);
-            loadingIndicator.textContent = 'Genereren... (0/' + MAX_POLL_ATTEMPTS + ')'; // Update loading message
-
-            // Start polling
-            let currentPollCount = 0;
-            pollingIntervalId = setInterval(() => {
-                pollTaskStatus(taskId, currentPollCount++);
-            }, POLLING_INTERVAL_MS);
-
-            // Initial immediate check (optional, reduces perceived delay)
-            // pollTaskStatus(taskId, currentPollCount++);
 
         } catch (error) {
             console.error('Error starting recipe generation:', error);
-            recipeOutput.textContent = `Fout bij starten: ${error.message}`;
-            estimatedCostOutput.textContent = '';
+            recipeOutput.innerHTML = `<p class="error">${error.message}</p>`;
             loadingIndicator.style.display = 'none';
             generateBtn.disabled = false;
-            // Ensure polling interval is cleared on start error
+            // Ensure polling stops on start error
             if (pollingIntervalId) {
                 clearInterval(pollingIntervalId);
                 pollingIntervalId = null;
             }
         }
+        // Note: Loading indicator and button re-enable are now handled by the polling function
     };
 
     // --- Event Listeners ---
     generateBtn.addEventListener('click', handleGenerateRecipe);
     addIngredientBtn.addEventListener('click', handleAddIngredient);
-    clearRecipesBtn.addEventListener('click', handleClearAllRecipes);
+    clearRecipesBtn?.addEventListener('click', handleClearAllRecipes); // Optional chaining if button might not exist
 
-    // === NEW: Event Delegation Listeners ===
-    // Listener for clicks within the recipe list (handles refine buttons)
-    recipeList.addEventListener('click', (event) => {
-        const refineButton = event.target.closest('.refine-btn');
-        if (refineButton) {
-            console.log("Refine button clicked (delegated)");
-            handleRefineRecipe(refineButton); // Pass the button element
-        }
-        // Can add more checks here for other buttons within list items if needed
-    });
-
-    // Listener for clicks within the ingredient table body (handles delete buttons)
+    // Delegate event listeners for dynamically added buttons (Delete Ingredient)
     ingredientTableBody.addEventListener('click', (event) => {
-        const deleteButton = event.target.closest('.delete-ingredient-btn');
-        if (deleteButton) {
-            console.log("Delete ingredient button clicked (delegated)");
-            const ingredientId = deleteButton.getAttribute('data-id');
-            if (ingredientId) {
-                handleDeleteIngredient(ingredientId, deleteButton); // Pass ID and button
-            } else {
-                console.error("Delete button clicked but no data-id found.");
-            }
+        if (event.target.classList.contains('delete-ingredient-btn')) {
+            handleDeleteIngredient(event.target.dataset.id, event.target);
         }
-        // Can add more checks here for other buttons within table rows if needed
     });
-    // ======================================
 
-    // --- Initial Setup ---
-    setActiveView('view-generator');
-    // Data for other views will be loaded when they are switched to.
+    // Delegate event listeners for dynamically added buttons (Refine Recipe) - KEEP IF NEEDED
+    // recipeList.addEventListener('click', (event) => { ... });
+
+    // --- Initial Load ---
+    setActiveView('view-generator'); // Start on the generator view
+    // Load ingredients in the background maybe? Or wait until view switch?
+    // loadIngredients();
 });
