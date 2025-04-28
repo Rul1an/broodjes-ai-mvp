@@ -2,6 +2,22 @@
   publish = "frontend"
   functions = "netlify/functions"
 
+# Declare external modules needed by functions
+[functions]
+  node_bundler = "esbuild"
+  # Specify dependencies needed by *all* functions (or use per-function config)
+  # external_node_modules = ["axios", "@supabase/supabase-js", "uuid", "openai"]
+
+# Configuration specific for generate-start
+[functions."generate-start"]
+  external_node_modules = ["axios", "@supabase/supabase-js", "uuid"]
+
+# Configuration specific for generatebackgroundnode-background
+[functions."generatebackgroundnode-background"]
+  external_node_modules = ["axios", "@supabase/supabase-js", "openai", "uuid"]
+  # Verhoog de timeout voor de background functie
+  timeout = 900 # 15 minuten (max voor background)
+
 # Keep the redirects rule
 [[redirects]]
   from = "/api/*"

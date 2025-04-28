@@ -25,3 +25,48 @@ build/
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# Node dependencies
+node_modules/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+npm-debug.log*
+pids
+*.pid
+*.seed
+*.log
+*.csv
+*.dat
+*.out
+*.pid.lock
+
+# macOS files
+.DS_Store
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Netlify temp
+.netlify
+
+# Ignore python virtual environments
+/venv/
+/.venv/
+/env/
+/.env/
+/ENV/
+/.ENV/
+
+*.pyc
+__pycache__/

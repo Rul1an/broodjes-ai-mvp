@@ -103,26 +103,27 @@ exports.handler = async function (event, context) {
                 idea: idea.trim(),
                 model: requestedModel
             };
-            try {
-                // Wacht op de aanroep zelf, gebruik RELATIEF pad
-                const response = await axios.post(relativeBackgroundPath, payload, {
-                    // Belangrijk: Stel baseURL in zodat axios weet waar het relatieve pad vandaan komt!
-                    baseURL: siteUrl, // Gebruik de site URL als basis
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-                console.log(`[generate-start] Background function invocation started (axios response status: ${response.status})`);
-            } catch (err) {
-                // Log de error, maar blokkeer de response niet
-                let errorMsg = err.message;
-                if (err.response) {
-                    errorMsg = `Status: ${err.response.status}, Data: ${JSON.stringify(err.response.data)}`;
-                } else if (err.request) {
-                    errorMsg = 'No response received from background function';
+            // Verwijder await en try/catch voor axios call - Fire-and-forget
+            axios.post(relativeBackgroundPath, payload, {
+                baseURL: siteUrl,
+                headers: {
+                    'Content-Type': 'application/json'
                 }
-                console.error(`Error invoking background function ${relativeBackgroundPath} with axios:`, errorMsg, `(Base URL: ${siteUrl})`); // Log ook baseURL
-            }
+            })
+                .then(response => {
+                    // Log alleen dat de aanroep is gestart (asynchroon)
+                    console.log(`[generate-start] Background function invocation request sent (axios status: ${response.status})`);
+                })
+                .catch(err => {
+                    // Log de error bij het *versturen* van de request, maar blokkeer niet
+                    let errorMsg = err.message;
+                    if (err.response) {
+                        errorMsg = `Status: ${err.response.status}, Data: ${JSON.stringify(err.response.data)}`;
+                    } else if (err.request) {
+                        errorMsg = 'No response received after sending request to background function';
+                    }
+                    console.error(`Error sending request to background function ${relativeBackgroundPath} with axios:`, errorMsg, `(Base URL: ${siteUrl})`);
+                });
         } else {
             // Dit zou niet mogen gebeuren, maar voor de zekerheid:
             console.error('Internal error: relativeBackgroundPath is somehow empty.');
