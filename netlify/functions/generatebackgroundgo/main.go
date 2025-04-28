@@ -4,6 +4,7 @@ import (
 	"context"
 	// "encoding/json"
 	"fmt"
+	"log"
 	"os"
 	// "strings"
 
@@ -82,9 +83,9 @@ import (
 // }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
-	// Enige logica die overblijft: loggen dat de handler is aangeroepen
-	fmt.Fprintln(os.Stdout, "[Go Background DEBUG] Simplified Handler invoked.")
-	fmt.Fprintf(os.Stdout, "[Go Background DEBUG] Request Body: %s\n", request.Body)
+	// Gebruik log.Printf voor output naar stderr (wat Netlify meestal vangt)
+	log.Printf("[Go Background DEBUG] Simplified Handler invoked via log package.")
+	log.Printf("[Go Background DEBUG] Request Body: %s\n", request.Body)
 
 	// // Rest van de handler is uitgecommentarieerd
 	// fmt.Println("[Go Background] Handler invoked.")
@@ -145,6 +146,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (*event
 }
 
 func main() {
-	// Make the handler available for AWS Lambda
+	// Zorg ervoor dat GODEBUG env var gezet kan worden indien nodig (voor meer lambda debug info)
+	log.SetOutput(os.Stderr) // Stuur logs naar stderr
 	lambda.Start(handler)
 }
