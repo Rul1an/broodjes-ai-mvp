@@ -91,22 +91,23 @@ exports.handler = async function (event, context) {
         }
 
         // Roep de nieuwe Node.js background functie aan
-        const backgroundFunctionPath = '/.netlify/functions/generatebackgroundnode';
-        const absoluteBackgroundUrl = siteUrl ? `${siteUrl}${backgroundFunctionPath}` : null;
+        const relativeBackgroundPath = '/.netlify/functions/generatebackgroundnode';
 
         // Log de URL die we *proberen* te fetchen (voor debug)
-        console.log(`[generate-start] Attempting to invoke background function at: ${absoluteBackgroundUrl}`); // Log de absolute URL
+        console.log(`[generate-start] Attempting to invoke background function at relative path: ${relativeBackgroundPath}`); // Log relatief pad
 
-        // Invoke the background task asynchronously using ABSOLUTE path with AXIOS
-        if (absoluteBackgroundUrl) { // Check of de absolute URL bestaat
+        // Invoke the background task asynchronously using RELATIVE path with AXIOS
+        if (relativeBackgroundPath) {
             const payload = {
                 task_id: taskId,
                 idea: idea.trim(),
                 model: requestedModel
             };
             try {
-                // Wacht wel op de aanroep zelf, ook al verwerken we de response niet direct hier
-                const response = await axios.post(absoluteBackgroundUrl, payload, {
+                // Wacht op de aanroep zelf, gebruik RELATIEF pad
+                const response = await axios.post(relativeBackgroundPath, payload, {
+                    // Belangrijk: Stel baseURL in zodat axios weet waar het relatieve pad vandaan komt!
+                    baseURL: siteUrl, // Gebruik de site URL als basis
                     headers: {
                         'Content-Type': 'application/json'
                     }
@@ -114,17 +115,17 @@ exports.handler = async function (event, context) {
                 console.log(`[generate-start] Background function invocation started (axios response status: ${response.status})`);
             } catch (err) {
                 // Log de error, maar blokkeer de response niet
-                // axios errors hebben vaak meer info in err.response of err.request
                 let errorMsg = err.message;
                 if (err.response) {
                     errorMsg = `Status: ${err.response.status}, Data: ${JSON.stringify(err.response.data)}`;
                 } else if (err.request) {
                     errorMsg = 'No response received from background function';
                 }
-                console.error(`Error invoking background function ${absoluteBackgroundUrl} with axios:`, errorMsg);
+                console.error(`Error invoking background function ${relativeBackgroundPath} with axios:`, errorMsg, `(Base URL: ${siteUrl})`); // Log ook baseURL
             }
         } else {
-            console.error('Could not invoke background function because site URL is missing.');
+            // Dit zou niet mogen gebeuren, maar voor de zekerheid:
+            console.error('Internal error: relativeBackgroundPath is somehow empty.');
         }
 
         // Return success with the task ID immediately
