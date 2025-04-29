@@ -20,8 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modelSelect = document.getElementById('model-select');
 
     // API Endpoints
-    const generateStartApiUrl = '/api/generate-start';
-    const getProcessedRecipeApiUrl = '/api/get-processed-recipe';
+    const generateRecipeGCFUrl = 'https://europe-west1-broodjes-ai.cloudfunctions.net/generateRecipe';
     const getRecipesApiUrl = '/api/getRecipes';
     const getIngredientsApiUrl = '/api/getIngredients';
     const addIngredientApiUrl = '/api/addIngredient';
@@ -29,11 +28,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const deleteIngredientApiUrl = '/api/deleteIngredient';
     const refineRecipeApiUrl = '/api/refineRecipe';
     const clearRecipesApiUrl = '/api/clearRecipes';
-
-    // Variable to hold the polling interval ID
-    let pollingIntervalId = null;
-    const POLLING_INTERVAL_MS = 3000; // Check status every 3 seconds
-    const MAX_POLL_ATTEMPTS = 40; // Stop polling after 120 seconds (40 * 3s)
 
     // --- View Switching Logic ---
     const setActiveView = (viewId) => {
@@ -254,51 +248,61 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'DELETE'
             });
 
-            if (!response.ok && response.status !== 204) {
-                const errorData = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const errorData = await response.json();
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
 
-            // alert('Ingrediënt succesvol verwijderd!'); // Optional feedback
-            loadIngredients(); // Refresh the list
+            // Remove the row from the table
+            const row = button.closest('tr');
+            if (row) {
+                row.remove();
+            } else {
+                loadIngredients(); // Fallback to reload if row finding fails
+            }
 
         } catch (error) {
             console.error('Error deleting ingredient:', error);
-            alert(`Kon ingrediënt niet verwijderen: ${error.message}`);
-            // Restore text also on error
+            alert(`Fout bij verwijderen: ${error.message}`);
+            // Re-enable button even on error
             button.disabled = false;
             button.textContent = originalButtonText;
         }
-        // Note: No finally block needed here as loadIngredients() redraws the table
-        // If the delete failed, the button is restored in the catch block.
-        // If successful, the button disappears anyway when the list reloads.
+        // Button is removed with row on success, no finally needed for re-enabling
     };
 
-    // --- Function for Recipe Refinement ---
+    ingredientTableBody.addEventListener('click', (event) => {
+        if (event.target.classList.contains('delete-ingredient-btn')) {
+            const ingredientId = event.target.dataset.id;
+            handleDeleteIngredient(ingredientId, event.target);
+        }
+    });
+
+    // --- Function to Refine Recipe (Keep existing, but might need update later) ---
     const handleRefineRecipe = async (button) => {
         const listItem = button.closest('li');
+        const recipeId = listItem.dataset.recipeId;
         const originalRecipeText = listItem.dataset.recipeText;
         const refineInput = listItem.querySelector('.refine-input');
-        const refineRequest = refineInput.value.trim();
-        const loadingDiv = listItem.querySelector('.refine-loading');
-        const outputPre = listItem.querySelector('.refined-recipe-output');
+        const refineLoading = listItem.querySelector('.refine-loading');
+        const refinedOutput = listItem.querySelector('.refined-recipe-output');
+        const refinePrompt = refineInput.value.trim();
 
-        if (!refineRequest) {
-            alert('Voer een verfijningsverzoek in.');
+        if (!refinePrompt) {
+            alert('Voer een verfijningsprompt in.');
             return;
         }
 
-        const originalButtonText = button.textContent;
+        refineLoading.style.display = 'block';
+        refinedOutput.textContent = '';
         button.disabled = true;
-        button.textContent = 'Verfijnen...';
-        loadingDiv.style.display = 'block';
-        outputPre.textContent = '';
+        refineInput.disabled = true;
 
         try {
             const response = await fetch(refineRecipeApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ originalRecipe: originalRecipeText, refinementRequest: refineRequest })
+                body: JSON.stringify({ recipeId, refinePrompt, originalRecipe: originalRecipeText })
             });
 
             if (!response.ok) {
@@ -307,221 +311,122 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            // Update the output with Markdown rendering
-            if (typeof marked !== 'undefined') {
-                outputPre.innerHTML = marked.parse(data.recipe || '');
-            } else {
-                console.error("Marked library not found for refining output.");
-                outputPre.textContent = data.recipe; // Fallback to text
-            }
-            // Optionally display the new estimated cost if needed
-            // if (data.estimated_cost) { ... }
+            refinedOutput.textContent = data.refinedRecipe;
 
         } catch (error) {
             console.error('Error refining recipe:', error);
-            outputPre.textContent = `Fout bij verfijnen: ${error.message}`;
+            refinedOutput.textContent = `Fout bij verfijnen: ${error.message}`;
         } finally {
+            refineLoading.style.display = 'none';
             button.disabled = false;
-            button.textContent = originalButtonText;
-            loadingDiv.style.display = 'none';
+            refineInput.disabled = false;
         }
     };
 
-    // --- NEW POLLING FUNCTION ---
-    const pollRecipeStatus = async (taskId, attempts = 0) => {
-        console.log(`Polling attempt ${attempts + 1} for task ${taskId}`);
+    recipeList.addEventListener('click', (event) => {
+        if (event.target.classList.contains('refine-btn')) {
+            handleRefineRecipe(event.target);
+        }
+        // Add listener for calculate-actual-cost-btn if needed
+    });
 
-        if (attempts >= MAX_POLL_ATTEMPTS) {
-            console.error(`Max poll attempts reached for task ${taskId}.`);
-            clearInterval(pollingIntervalId);
-            pollingIntervalId = null;
-            loadingIndicator.style.display = 'none';
-            recipeOutput.innerHTML = '<p class="error">Het duurde te lang om het recept op te halen. Probeer het opnieuw.</p>';
-            generateBtn.disabled = false;
+    // --- Function to Display Generated/Fetched Recipe in the Main Output Area ---
+    const displayRecipe = (recipe) => {
+        if (!recipe || typeof recipe !== 'object') {
+            recipeOutput.innerHTML = '<p>Fout: Ongeldige receptdata ontvangen.</p>';
             return;
         }
 
-        try {
-            const response = await fetch(`${getProcessedRecipeApiUrl}?task_id=${taskId}`);
+        let html = `<h2>${recipe.title || 'Onbekend Recept'}</h2>`;
+        html += `<p>${recipe.description || ''}</p>`;
 
-            if (!response.ok) {
-                // Handle specific errors like 404 (task not found yet?)
-                if (response.status === 404) {
-                    console.warn(`Task ${taskId} not found yet (404), continuing poll.`);
-                    // No error message shown yet, just continue polling
-                    return;
-                }
-                // Other HTTP errors
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `HTTP Fout: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data.status === 'pending' || data.status === 'processing') {
-                // Task is still running, wait for the next poll
-                recipeOutput.innerHTML = `<p>Status: ${data.status}... Het recept wordt gegenereerd.</p>`;
-                // Keep polling
-            } else if (data.status === 'failed') {
-                console.error(`Task ${taskId} failed:`, data.error);
-                clearInterval(pollingIntervalId);
-                pollingIntervalId = null;
-                loadingIndicator.style.display = 'none';
-                recipeOutput.innerHTML = `<p class="error">Recept genereren mislukt: ${data.error || 'Onbekende fout'}</p>`;
-                generateBtn.disabled = false;
-            } else if (data.status === 'completed') {
-                console.log(`Task ${taskId} completed!`);
-                clearInterval(pollingIntervalId);
-                pollingIntervalId = null;
-                loadingIndicator.style.display = 'none';
-
-                // Generate Markdown from the processed recipe data
-                const recipe = data.recipe;
-                let markdown = `## ${recipe.naam || 'Naamloos Broodje'}\n\n`;
-                if (recipe.beschrijving) {
-                    markdown += `${recipe.beschrijving}\n\n`;
-                }
-                markdown += `### Ingrediënten\n`;
-                recipe.ingredienten.forEach(ing => {
-                    markdown += `- ${ing.naam}: ${ing.hoeveelheid}`;
-                    if (ing.cost && ing.cost !== 'N/A') {
-                        markdown += ` (kosten: €${ing.cost})`;
-                    }
-                    if (ing.unit && ing.cost === 'N/A') { // Show unit if cost is N/A
-                        markdown += ` (${ing.unit})`;
-                    } else if (ing.unit) { // Show unit if cost is present
-                        markdown += ` per ${ing.unit}`;
-                    }
-                    markdown += '\n';
-                });
-                if (recipe.totalCost) {
-                    markdown += `\n**Geschatte Totale Kosten:** €${recipe.totalCost}\n`;
-                }
-                markdown += `\n### Instructies\n`;
-                recipe.instructies.forEach((stap, index) => {
-                    markdown += `${index + 1}. ${stap}\n`;
-                });
-
-                recipeOutput.innerHTML = marked.parse(markdown);
-                generateBtn.disabled = false;
-            } else {
-                // Unknown status - should not happen with current backend logic
-                console.warn(`Unknown status received for task ${taskId}:`, data.status);
-                // Continue polling for a bit? Or stop?
-                // Let's stop for now to avoid infinite loops on weird states
-                clearInterval(pollingIntervalId);
-                pollingIntervalId = null;
-                loadingIndicator.style.display = 'none';
-                recipeOutput.innerHTML = `<p class="error">Onbekende status (${data.status}) ontvangen. Probeer het opnieuw.</p>`;
-                generateBtn.disabled = false;
-            }
-
-        } catch (error) {
-            console.error('Error during polling:', error);
-            // Don't stop polling on network errors immediately, could be temporary
-            // Maybe add a counter for consecutive network errors?
-            // For now, just log it and let the max attempts handle it.
-            recipeOutput.innerHTML = `<p class="error">Fout bij controleren status: ${error.message}. Poging ${attempts + 1}/${MAX_POLL_ATTEMPTS}</p>`;
-            // Consider stopping polling if error persists
-            /*
-            if (error might be permanent) {
-                 clearInterval(pollingIntervalId);
-                 pollingIntervalId = null;
-                 loadingIndicator.style.display = 'none';
-                 generateBtn.disabled = false;
-            }
-            */
+        if (recipe.ingredients && Array.isArray(recipe.ingredients)) {
+            html += '<h3>Ingrediënten:</h3><ul>';
+            recipe.ingredients.forEach(ing => {
+                html += `<li>${ing.quantity || ''} ${ing.name || 'Onbekend ingrediënt'}</li>`;
+            });
+            html += '</ul>';
         }
+
+        if (recipe.instructions && Array.isArray(recipe.instructions)) {
+            html += '<h3>Instructies:</h3><ol>';
+            recipe.instructions.forEach(inst => {
+                html += `<li>${inst}</li>`;
+            });
+            html += '</ol>';
+        }
+        // You can add more fields here if the GCF returns them
+
+        recipeOutput.innerHTML = html;
     };
 
-    // --- MODIFIED handleGenerateRecipe function ---
+    // --- Function to Handle Recipe Generation ---
     const handleGenerateRecipe = async () => {
         const idea = ideaInput.value.trim();
-        const selectedModel = modelSelect.value;
+        const model = modelSelect.value; // Get selected model
 
         if (!idea) {
-            alert('Voer een idee voor je broodje in!');
+            alert('Vul een broodje-idee in!');
             return;
         }
 
-        // Stop any previous polling
-        if (pollingIntervalId) {
-            clearInterval(pollingIntervalId);
-            pollingIntervalId = null;
-        }
-
+        generateBtn.disabled = true;
         loadingIndicator.style.display = 'block';
         recipeOutput.innerHTML = ''; // Clear previous output
-        generateBtn.disabled = true;
+        console.log(`Generating recipe for: ${idea} using model ${model}`); // Log model usage
 
         try {
-            console.log(`Sending request to ${generateStartApiUrl} with idea: ${idea}, model: ${selectedModel}`);
-            const response = await fetch(generateStartApiUrl, {
+            console.log('Sending request to GCF:', generateRecipeGCFUrl);
+            const response = await fetch(generateRecipeGCFUrl, { // <<< USE GCF URL
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idea: idea, model: selectedModel })
+                body: JSON.stringify({ ingredients: idea, type: 'broodje', language: 'Nederlands', model: model }) // Send idea as 'ingredients' and type 'broodje', include model
             });
 
+            console.log('Received response from GCF, status:', response.status);
+
             if (!response.ok) {
-                let errorMsg = `Starten mislukt: HTTP error! status: ${response.status}`;
+                let errorMsg = `Genereren mislukt (status ${response.status})`;
                 try {
                     const errorData = await response.json();
-                    errorMsg = `Starten mislukt: ${errorData.error || response.statusText}`;
-                } catch (e) { /* Ignore parsing error if body isn't JSON */ }
+                    console.error('GCF Error Response:', errorData);
+                    errorMsg = errorData.details || errorData.error || errorMsg;
+                } catch (e) {
+                    console.error('Failed to parse error response:', await response.text());
+                }
                 throw new Error(errorMsg);
             }
 
             const data = await response.json();
+            console.log('GCF Success Response:', data);
 
-            if (data.task_id) {
-                console.log(`Task started with ID: ${data.task_id}. Starting polling.`);
-                recipeOutput.innerHTML = '<p>Taak gestart... Recept wordt opgehaald.</p>';
-                // Start polling
-                let attempts = 0;
-                // Initial immediate check
-                await pollRecipeStatus(data.task_id, attempts++);
-                // Set interval only if not already completed/failed on first check
-                if (pollingIntervalId === null) { // Check if pollRecipeStatus didn't clear the interval
-                    pollingIntervalId = setInterval(() => {
-                        pollRecipeStatus(data.task_id, attempts++);
-                    }, POLLING_INTERVAL_MS);
-                }
+            if (data.recipe) {
+                displayRecipe(data.recipe); // <<< Call display function directly
             } else {
-                // Should not happen if backend returns 202 correctly
-                throw new Error('Geen task_id ontvangen van de server.');
+                throw new Error('Geldig antwoord ontvangen, maar geen recept gevonden.');
             }
 
         } catch (error) {
-            console.error('Error starting recipe generation:', error);
-            recipeOutput.innerHTML = `<p class="error">${error.message}</p>`;
+            console.error('Error during recipe generation:', error);
+            recipeOutput.innerHTML = `<p style="color: red;"><strong>Fout:</strong> ${error.message}</p>`;
+        } finally {
             loadingIndicator.style.display = 'none';
             generateBtn.disabled = false;
-            // Ensure polling stops on start error
-            if (pollingIntervalId) {
-                clearInterval(pollingIntervalId);
-                pollingIntervalId = null;
-            }
         }
-        // Note: Loading indicator and button re-enable are now handled by the polling function
     };
 
-    // --- Event Listeners ---
-    generateBtn.addEventListener('click', handleGenerateRecipe);
-    addIngredientBtn.addEventListener('click', handleAddIngredient);
-    clearRecipesBtn?.addEventListener('click', handleClearAllRecipes); // Optional chaining if button might not exist
+    // Event Listeners
+    if (generateBtn) {
+        generateBtn.addEventListener('click', handleGenerateRecipe);
+    }
+    if (addIngredientBtn) {
+        addIngredientBtn.addEventListener('click', handleAddIngredient);
+    }
+    if (clearRecipesBtn) {
+        clearRecipesBtn.addEventListener('click', handleClearAllRecipes);
+    }
 
-    // Delegate event listeners for dynamically added buttons (Delete Ingredient)
-    ingredientTableBody.addEventListener('click', (event) => {
-        if (event.target.classList.contains('delete-ingredient-btn')) {
-            handleDeleteIngredient(event.target.dataset.id, event.target);
-        }
-    });
-
-    // Delegate event listeners for dynamically added buttons (Refine Recipe) - KEEP IF NEEDED
-    // recipeList.addEventListener('click', (event) => { ... });
-
-    // --- Initial Load ---
+    // Initial Load / Setup
     setActiveView('view-generator'); // Start on the generator view
-    // Load ingredients in the background maybe? Or wait until view switch?
-    // loadIngredients();
+    // Load ingredients in the background? Or handled by view switch
 });
