@@ -1,0 +1,26 @@
+{
+    "name": "broodjes-ai-render-worker",
+    "version": "1.0.0",
+    "description": "Background worker for processing Broodjes AI recipe generation tasks.",
+    "main": "worker.js",
+    "scripts": {
+        "start": "node worker.js",
+        "dev": "node --watch worker.js"
+    },
+    "keywords": [
+        "render",
+        "worker",
+        "supabase",
+        "openai"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "@supabase/supabase-js": "^2.43.4",
+        "dotenv": "^16.4.5",
+        "openai": "^4.49.1"
+    },
+    "engines": {
+        "node": ">=18"
+    }
+}
