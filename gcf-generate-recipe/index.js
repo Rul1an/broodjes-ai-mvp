@@ -119,9 +119,15 @@ functions.http('generateRecipe', async (req, res) => {
         const systemPrompt = `Je bent een expert in het bedenken van recepten. Genereer een recept gebaseerd op de volgende input. Geef ALLEEN een JSON-object terug met de volgende structuur: {"title": "Recept Titel", "description": "Korte omschrijving", "ingredients": [{"name": "Ingrediënt naam", "quantity": "Hoeveelheid (bv. 100g, 2 stuks)"}], "instructions": ["Stap 1", "Stap 2", ...]}. Gebruik de taal: ${validatedLanguage}.`;
         const userPrompt = `Ingrediënten: ${ingredients}. Type gerecht: ${type}. Taal: ${validatedLanguage}.`;
 
+        // <<< Determine the model to use >>>
+        const requestedModel = model || "gpt-4o-mini"; // Default to gpt-4o-mini if not provided
+        // Add more validation if needed, e.g., check against a list of allowed models
+        const modelToUse = ["gpt-4o", "gpt-4o-mini"].includes(requestedModel) ? requestedModel : "gpt-4o-mini";
+        console.log(`Using OpenAI model: ${modelToUse}`);
+
         console.log('Sending request to OpenAI...');
         const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini", // Or "gpt-4o" for higher quality but potentially slower response
+            model: modelToUse, // <<< Use the dynamically determined model >>>
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt },
