@@ -56,7 +56,7 @@ functions.http('generateRecipe', async (req, res) => {
     console.log('Received request body:', req.body);
 
     // --- Input Extraction and Validation ---
-    const { ingredients, type, language } = req.body;
+    const { ingredients, type, language, model } = req.body;
 
     if (!ingredients || typeof ingredients !== 'string' || ingredients.trim() === '') {
         console.error('Invalid input: Missing or empty ingredients.');
@@ -79,9 +79,9 @@ functions.http('generateRecipe', async (req, res) => {
         const { data: taskData, error: taskError } = await supabase
             .from('async_tasks')
             .insert({
-                user_prompt: JSON.stringify({ ingredients, type, language: validatedLanguage }), // Store original request
+                user_prompt: JSON.stringify({ ingredients, type, language: validatedLanguage, model }), // Store original request including model
                 status: 'processing',
-                model: modelSelect ? modelSelect.value : null, // Store model if available
+                model: model || null, // Use model from req.body
                 idea: (typeof ingredients === 'string') ? ingredients : null, // Store raw ingredients input as idea?
                 started_at: new Date().toISOString() // Set start time
             })
