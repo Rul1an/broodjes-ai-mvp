@@ -77,30 +77,37 @@ functions.http('generateRecipe', async (req, res) => {
     try {
         console.log('Creating initial task record in Supabase...');
         const { data: taskData, error: taskError } = await supabase
-            .from('tasks')
+            .from('async_tasks')
             .insert({
                 user_prompt: JSON.stringify({ ingredients, type, language: validatedLanguage }), // Store original request
                 status: 'processing',
-                // Add other relevant fields if necessary, e.g., user_id if available
+                model: modelSelect ? modelSelect.value : null, // Store model if available
+                idea: (typeof ingredients === 'string') ? ingredients : null, // Store raw ingredients input as idea?
+                started_at: new Date().toISOString() // Set start time
             })
-            .select('id') // Select the generated ID
-            .single(); // Expecting a single record insertion
+            .select('task_id')
+            .single();
 
         if (taskError) {
             throw taskError; // Re-throw Supabase specific error
         }
 
-        if (!taskData || !taskData.id) {
+        if (!taskData || !taskData.task_id) {
             throw new Error('Failed to create task or retrieve task ID from Supabase.');
         }
 
-        taskId = taskData.id;
+        taskId = taskData.task_id;
         console.log(`Successfully created task with ID: ${taskId}`);
 
     } catch (dbError) {
         console.error('Database Error: Failed to create initial task record:', dbError);
+        // Use more specific error logging if possible
+        const errorMessage = dbError.message || 'Unknown database error';
+        const errorDetails = dbError.details || '';
+        const errorHint = dbError.hint || '';
+        console.error(`Supabase error details: ${errorMessage} ${errorDetails} ${errorHint}`);
         // Stop processing if we can't even create the initial task record
-        return res.status(500).json({ error: 'Failed to initialize task processing.', details: dbError.message });
+        return res.status(500).json({ error: 'Failed to initialize task processing.', details: errorMessage });
     }
     // --- End Initial Task Creation ---
 
@@ -171,12 +178,12 @@ functions.http('generateRecipe', async (req, res) => {
         // --- End OpenAI Response Validation ---
 
         // --- (Optional) Update Task Status: Success ---
-        await updateTaskStatus(taskId, 'completed', recipeResultJson);
+        await updateTaskStatus(taskId, 'completed', JSON.stringify(recipeResultJson));
         // --- End Task Update ---
 
         const finalResponse = {
             taskId: taskId,
-            recipe: recipeResultJson, // Send the validated JSON object
+            recipe: recipeResultJson, // Send the parsed JSON object back to frontend
         };
 
         console.log('Sending success response:', finalResponse);
@@ -186,8 +193,8 @@ functions.http('generateRecipe', async (req, res) => {
         console.error(`Error processing request for task ID ${taskId}:`, error);
 
         // --- (Optional) Update Task Status: Error ---
-        // Attempt to update status even if main processing failed
-        await updateTaskStatus(taskId, 'error', { message: error.message });
+        // Update with error message in 'error_message' column based on schema
+        await updateTaskStatus(taskId, 'error', error.message);
         // --- End Task Update ---
 
         res.status(500).json({ error: 'Failed to generate recipe.', details: error.message, taskId: taskId }); // Include taskId in error response
@@ -195,32 +202,33 @@ functions.http('generateRecipe', async (req, res) => {
 });
 
 // --- Helper function for updating task status ---
-async function updateTaskStatus(taskId, status, resultOrError) {
+async function updateTaskStatus(taskId, status, resultOrErrorString) {
     if (!taskId) {
-        console.log('No taskId provided, skipping status update.');
+        console.log('No task_id provided, skipping status update.');
         return;
     }
     try {
         const updatePayload = {
             status: status,
-            ended_at: new Date().toISOString(),
-            ...(status === 'completed' && { result: resultOrError }),
-            ...(status === 'error' && { error_details: resultOrError }),
+            updated_at: new Date().toISOString(),
+            ...(status === 'completed' && { recipe: resultOrErrorString }),
+            ...(status === 'error' && { error_message: resultOrErrorString }),
         };
+        // Remove null/undefined fields from payload to avoid overwriting existing values unintentionally
+        Object.keys(updatePayload).forEach(key => updatePayload[key] === undefined && delete updatePayload[key]);
+
         console.log(`Attempting to update task ${taskId} to status: ${status}`);
         const { error } = await supabase
-            .from('tasks')
+            .from('async_tasks')
             .update(updatePayload)
-            .eq('id', taskId);
+            .eq('task_id', taskId);
 
         if (error) {
             console.error(`Failed to update task ${taskId} status to ${status}:`, error);
-            // Don't re-throw here, as the main operation might have succeeded/failed already
         } else {
             console.log(`Successfully updated task ${taskId} status to ${status}`);
         }
     } catch (updateError) {
-        // Catch errors during the update process itself
         console.error(`Exception while updating task ${taskId} status to ${status}:`, updateError);
     }
 }
