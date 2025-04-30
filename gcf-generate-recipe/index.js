@@ -182,12 +182,52 @@ functions.http('generateRecipe', async (req, res) => {
         console.log('OpenAI response structure validation passed.');
         // --- End OpenAI Response Validation ---
 
+        // --- Save the generated recipe to the 'recipes' table ---
+        let newRecipeId = null;
+        try {
+            console.log('Saving generated recipe to recipes table...');
+            const { data: newRecipeData, error: insertRecipeError } = await supabase
+                .from('recipes') // <<< Target the 'recipes' table
+                .insert({
+                    idea: ingredients, // Store the original user idea/input
+                    generated_recipe: JSON.stringify(recipeResultJson) // Store the full recipe JSON as text
+                    // created_at is usually handled by default value
+                    // estimated_total_cost will be calculated later
+                })
+                .select('id') // Get the ID of the newly inserted recipe
+                .single();
+
+            if (insertRecipeError) {
+                throw insertRecipeError;
+            }
+            if (!newRecipeData || !newRecipeData.id) {
+                throw new Error('Failed to insert recipe or retrieve its ID.');
+            }
+            newRecipeId = newRecipeData.id;
+            console.log(`Successfully saved recipe with ID: ${newRecipeId}`);
+
+        } catch (saveError) {
+            console.error('Failed to save recipe to recipes table:', saveError);
+            // Decide if this error should stop the whole process or just be logged
+            // For now, let's throw it to indicate failure to the user,
+            // but still update the async_task to 'error'? Or maybe 'completed_save_failed'?
+            // Let's update async_task to error and then re-throw.
+            await updateTaskStatus(taskId, 'error', `Failed to save recipe: ${saveError.message}`);
+            throw new Error(`Failed to save generated recipe: ${saveError.message}`);
+        }
+        // --- End saving recipe ---
+
+
         // --- (Optional) Update Task Status: Success ---
+        // Update async_tasks status and link to the new recipe ID?
+        // Adding recipe_id column to async_tasks might be useful.
+        // For now, just mark as completed with the recipe string.
         await updateTaskStatus(taskId, 'completed', JSON.stringify(recipeResultJson));
         // --- End Task Update ---
 
         const finalResponse = {
             taskId: taskId,
+            recipeId: newRecipeId, // <<< Add the new recipe ID to the response
             recipe: recipeResultJson, // Send the parsed JSON object back to frontend
         };
 
