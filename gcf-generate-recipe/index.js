@@ -7,20 +7,25 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
-// Validate that environment variables are set
-if (!supabaseUrl || !supabaseAnonKey || !openaiApiKey) {
-    console.error('Missing required environment variables: SUPABASE_URL, SUPABASE_ANON_KEY, OPENAI_API_KEY');
-    // Optionally, throw an error during initialization phase
-    // throw new Error('Missing required environment variables');
+// Initialize OpenAI client
+let openai;
+if (openaiApiKey) {
+    openai = new OpenAI({ apiKey: openaiApiKey });
+    console.log('OpenAI client initialized for generateRecipe.');
+} else {
+    // Log an error or warning if OpenAI key is missing, as it's now needed for cost estimate
+    console.error('CRITICAL: Missing OPENAI_API_KEY. Cannot provide initial cost estimates.');
+    // Decide if the function should fail entirely without OpenAI
+    // For now, it will proceed but AI estimate will fail
 }
 
-// Initialize Supabase client
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Validate that environment variables are set
+if (!supabaseUrl || !supabaseAnonKey) { // Keep Anon key for initial task creation if needed, or switch entirely to Service Key if preferred
+    console.error('Missing required Supabase environment variables: SUPABASE_URL, SUPABASE_ANON_KEY');
+}
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-    apiKey: openaiApiKey,
-});
+// Initialize Supabase client (using Anon key for task creation initially)
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
  * HTTP Cloud Function.
@@ -211,9 +216,22 @@ functions.http('generateRecipe', async (req, res) => {
         await updateTaskStatus(taskId, 'completed', JSON.stringify(recipeResultJson));
         // --- End Task Update ---
 
+        // --- >>> NEW: Get Initial AI Cost Estimate <<< ---
+        let initialEstimatedCost = null;
+        if (openai) { // Only if OpenAI client is initialized
+            try {
+                initialEstimatedCost = await getAICostEstimate(recipeResultJson);
+                console.log(`Initial AI cost estimate: ${initialEstimatedCost}`);
+            } catch (aiCostError) {
+                console.error(`Failed to get initial AI cost estimate for task ${taskId}:`, aiCostError);
+            }
+        }
+        // --- >>> END: Get Initial AI Cost Estimate <<< ---
+
         const finalResponse = {
             taskId: taskId,
             recipe: recipeResultJson, // Send the parsed JSON object back to frontend
+            initialEstimatedCost: initialEstimatedCost // <<< ADD ESTIMATE TO RESPONSE
         };
 
         console.log('Sending success response:', finalResponse);
@@ -260,5 +278,62 @@ async function updateTaskStatus(taskId, status, resultOrErrorString) {
         }
     } catch (updateError) {
         console.error(`Exception while updating task ${taskId} status to ${status}:`, updateError);
+    }
+}
+
+// --- >>> NEW: Helper function for AI Cost Estimation (similar to calculateCost) <<< ---
+async function getAICostEstimate(recipeJson) {
+    if (!openai) {
+        console.error('Cannot estimate cost: OpenAI client not initialized.');
+        return null;
+    }
+    if (!recipeJson || !recipeJson.ingredients || !Array.isArray(recipeJson.ingredients)) {
+        console.error('Cannot estimate cost: Invalid recipe JSON format provided for AI estimation.');
+        return null;
+    }
+
+    // Prepare ingredients list for the prompt
+    const ingredientsList = recipeJson.ingredients.map(ing => `- ${ing.quantity || ''} ${ing.name || 'Unknown'}`).join('\n');
+
+    const prompt = `
+    Estimate the total cost in Euros (€) to prepare a recipe with the following ingredients based on average Dutch supermarket prices. Provide ONLY the numerical value (e.g., 4.50), without the currency symbol or any other text.
+
+    Ingredients:
+    ${ingredientsList}
+    `;
+
+    try {
+        // console.log('Requesting initial AI cost estimation...'); // Optional: reduce logging for initial generation
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini", // Use a cost-effective model
+            messages: [
+                { role: "system", content: "You are an assistant that estimates recipe costs in Euros. Respond with ONLY the numerical cost value." },
+                { role: "user", content: prompt },
+            ],
+            temperature: 0.2, // Low temperature for factual estimation
+            max_tokens: 10, // Limit response length
+        });
+
+        const aiResponse = completion.choices[0]?.message?.content?.trim();
+        // console.log('Raw initial AI cost estimation response:', aiResponse); // Optional logging
+
+        if (!aiResponse) {
+            console.error('Initial AI cost estimation returned empty response.');
+            return null;
+        }
+
+        // Attempt to parse the response as a float
+        const estimatedCost = parseFloat(aiResponse.replace(',', '.')); // Handle comma decimals
+
+        if (isNaN(estimatedCost)) {
+            console.error(`Initial AI cost estimation did not return a valid number: "${aiResponse}"`);
+            return null;
+        }
+
+        return estimatedCost;
+
+    } catch (error) {
+        console.error('Error calling OpenAI API for initial cost estimation:', error);
+        return null;
     }
 }
