@@ -25,21 +25,32 @@ exports.handler = async function (event, context) {
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Fetch recipes, including the estimated cost
-    const { data: recipes, error } = await supabase
-      .from('recipes')
-      .select('id, idea, generated_recipe, created_at, estimated_total_cost') // Added estimated_total_cost
+    // Fetch COMPLETED TASKS, including the recipe JSON and estimated cost
+    const { data: tasks, error } = await supabase
+      .from('async_tasks')
+      .select('task_id, idea, recipe, created_at, estimated_cost')
+      .eq('status', 'completed')
+      .not('recipe', 'is', null)
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching recipes:', error);
+      console.error('Error fetching completed tasks:', error);
       throw error;
     }
 
-    // Return the fetched recipes
+    // Map the data slightly to match what the frontend expects
+    const recipesForFrontend = tasks.map(task => ({
+      id: task.task_id,
+      idea: task.idea,
+      generated_recipe: task.recipe,
+      created_at: task.created_at,
+      estimated_total_cost: task.estimated_cost
+    }));
+
+    // Return the fetched tasks/recipes
     return {
       statusCode: 200,
-      body: JSON.stringify({ recipes }),
+      body: JSON.stringify({ recipes: recipesForFrontend }),
     };
   } catch (error) {
     console.error('Error in getRecipes function:', error);
