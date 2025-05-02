@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 // Initialize Supabase client (needs Service Role for reads/writes now)
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseServiceKey = process.env.SERVICE_ROLE_KEY;
 let supabase;
 if (supabaseUrl && supabaseServiceKey) {
     supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -71,7 +71,14 @@ exports.handler = async function (event, context) {
             return { statusCode: 400, body: JSON.stringify({ error: 'Missing required parameter: recipeId (should be task_id)' }) };
         }
 
-        // --- >>> NEW: Fetch original recipe and breakdown from async_tasks <<< ---
+        // Validate refinementRequest
+        if (!refinementRequest || typeof refinementRequest !== 'string' || refinementRequest.trim().length === 0) {
+            return { statusCode: 400, body: JSON.stringify({ error: 'Parameter "refinementRequest" must be a non-empty string.' }) };
+        }
+        const trimmedRefinementRequest = refinementRequest.trim();
+        // -----------------------------------
+
+        // --- Fetch original recipe and breakdown from async_tasks ---
         console.log(`refineRecipe: Fetching task ${recipeId}`);
         const { data: taskData, error: taskError } = await supabase
             .from('async_tasks')
@@ -88,14 +95,7 @@ exports.handler = async function (event, context) {
         }
         const originalRecipeJsonString = taskData.recipe;
         const existingBreakdownText = taskData.cost_breakdown || "Geen kosten opbouw beschikbaar."; // Fallback text
-        // --- >>> END Fetch <<< ---
-
-        // Validate refinementRequest
-        if (!refinementRequest || typeof refinementRequest !== 'string' || refinementRequest.trim().length === 0) {
-            return { statusCode: 400, body: JSON.stringify({ error: 'Parameter "refinementRequest" must be a non-empty string.' }) };
-        }
-        const trimmedRefinementRequest = refinementRequest.trim();
-        // -----------------------------------
+        // --- END Fetch ---
 
         // --- Prompt for Refinement (Updated) ---
         const prompt = `
@@ -161,7 +161,7 @@ exports.handler = async function (event, context) {
         console.log("Recipe refined by AI.");
         // -----------------------
 
-        // --- >>> NEW: Update async_tasks with refined text <<< ---
+        // --- Update async_tasks with refined text ---
         console.log(`refineRecipe: Updating task ${recipeId} with refined recipe/breakdown text...`);
         const { error: updateError } = await supabase
             .from('async_tasks')
@@ -179,7 +179,7 @@ exports.handler = async function (event, context) {
         } else {
             console.log(`refineRecipe: Successfully updated task ${recipeId}.`);
         }
-        // --- >>> END Update <<< ---
+        // --- END Update ---
 
         // --- Extract Cost & Return ---
         const estimated_total_cost = extractEstimatedCost(refined_recipe_text);
