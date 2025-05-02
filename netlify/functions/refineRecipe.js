@@ -97,8 +97,7 @@ exports.handler = async function (event, context) {
         - [Tijd]
 
         ## Geschatte Kosten:
-        - [Kosten details]
-        - **Geschatte totale kosten: €X.XX**
+        # Bereken en vermeld hier de geschatte totale kosten in euro's. Bijvoorbeeld: "Geschatte totale kosten: €4.50"
 
         BELANGRIJK: Geef GEEN extra uitleg, GEEN inleidende zinnen, GEEN afsluitende zinnen en herhaal NIET de JSON structuur indien het origineel JSON was. Geef alleen het bijgewerkte recept in de gevraagde platte tekst opmaak.
         `;
