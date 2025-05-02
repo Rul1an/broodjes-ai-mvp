@@ -65,23 +65,43 @@ exports.handler = async function (event, context) {
 
         // --- Prompt for Refinement ---
         const prompt = `
-        Hier is een bestaand broodjesrecept:
-        --- RECEPT START ---
+        Origineel Recept (kan JSON of platte tekst zijn):
+        --- START ---
         ${trimmedOriginalRecipe}
-        --- RECEPT EINDE ---
+        --- EINDE ---
 
-        Verzoek van de gebruiker: "${trimmedRefinementRequest}"
+        Verzoek Gebruiker: "${trimmedRefinementRequest}"
 
-        Pas het bovenstaande recept aan op basis van het verzoek van de gebruiker.
-        Presenteer het volledige, bijgewerkte recept, inclusief:
-        - Aangepaste ingrediëntenlijst (met geschatte hoeveelheden).
-        - Aangepaste bereidingsstappen.
-        - Eventueel bijgewerkte component suggesties.
-        - Bijgewerkte geschatte tijd.
-        - Bijgewerkte geschatte kosten (bv. "Geschatte totale kosten: €X.XX").
+        Taak: Pas het originele recept aan volgens het verzoek van de gebruiker. Geef ALLEEN het volledig bijgewerkte recept terug als platte tekst. Gebruik de volgende Markdown-achtige opmaak:
 
-        Zorg ervoor dat de aanpassing duidelijk en logisch is verwerkt in het *gehele* recept. Gebruik dezelfde opmaak met duidelijke kopjes.
-        `; // Simplified cost instruction slightly for potentially better adherence
+        # [Nieuwe Recept Titel]
+
+        [Optionele korte beschrijving]
+
+        ## Ingrediënten:
+        - [Hoeveelheid] [Ingrediënt 1]
+        - [Hoeveelheid] [Ingrediënt 2]
+        ...
+
+        ## Bereiding:
+        1. [Stap 1]
+        2. [Stap 2]
+        ...
+
+        ## Component Suggesties: (Indien relevant)
+        - [Suggestie 1]
+        - [Suggestie 2]
+        ...
+
+        ## Geschatte Tijd:
+        - [Tijd]
+
+        ## Geschatte Kosten:
+        - [Kosten details]
+        - **Geschatte totale kosten: €X.XX**
+
+        BELANGRIJK: Geef GEEN extra uitleg, GEEN inleidende zinnen, GEEN afsluitende zinnen en herhaal NIET de JSON structuur indien het origineel JSON was. Geef alleen het bijgewerkte recept in de gevraagde platte tekst opmaak.
+        `;
         // ---------------------------
 
         // --- Call OpenAI API ---
