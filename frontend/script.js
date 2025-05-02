@@ -336,7 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(refineRecipeApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ recipeId, refinementRequest: refinePrompt, originalRecipe: originalRecipeText })
+                body: JSON.stringify({ recipeId, refinementRequest: refinePrompt })
             });
 
             if (!response.ok) {

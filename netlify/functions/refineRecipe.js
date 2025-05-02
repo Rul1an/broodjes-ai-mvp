@@ -1,8 +1,21 @@
 const { OpenAI } = require('openai');
+const { createClient } = require('@supabase/supabase-js');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Initialize Supabase client (needs Service Role for reads/writes now)
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let supabase;
+if (supabaseUrl && supabaseServiceKey) {
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
+    console.log('refineRecipe: Supabase client initialized with Service Key.');
+} else {
+    console.error('refineRecipe: Missing Supabase credentials (URL or Service Key).');
+    // Function should probably fail early if Supabase isn't available
+}
 
 // Helper function to extract estimated cost (consider sharing/importing if used elsewhere)
 function extractEstimatedCost(text) {
@@ -33,6 +46,9 @@ exports.handler = async function (event, context) {
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }
+    if (!supabase) {
+        return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error (DB)' }) };
+    }
 
     let body;
 
@@ -48,13 +64,31 @@ exports.handler = async function (event, context) {
             return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON format in request body.' }) };
         }
 
-        const { originalRecipe, refinementRequest } = body;
+        const { recipeId, refinementRequest } = body;
 
-        // Validate originalRecipe
-        if (!originalRecipe || typeof originalRecipe !== 'string' || originalRecipe.trim().length === 0) {
-            return { statusCode: 400, body: JSON.stringify({ error: 'Parameter "originalRecipe" must be a non-empty string.' }) };
+        // Validate recipeId
+        if (!recipeId) {
+            return { statusCode: 400, body: JSON.stringify({ error: 'Missing required parameter: recipeId (should be task_id)' }) };
         }
-        const trimmedOriginalRecipe = originalRecipe.trim();
+
+        // --- >>> NEW: Fetch original recipe and breakdown from async_tasks <<< ---
+        console.log(`refineRecipe: Fetching task ${recipeId}`);
+        const { data: taskData, error: taskError } = await supabase
+            .from('async_tasks')
+            .select('recipe, cost_breakdown') // Fetch recipe JSON and existing breakdown text
+            .eq('task_id', recipeId)
+            .maybeSingle();
+
+        if (taskError) {
+            console.error(`refineRecipe: Error fetching task ${recipeId}:`, taskError);
+            throw new Error(`Database error fetching task: ${taskError.message}`);
+        }
+        if (!taskData || !taskData.recipe) {
+            return { statusCode: 404, body: JSON.stringify({ error: `Task ${recipeId} not found or has no recipe data.` }) };
+        }
+        const originalRecipeJsonString = taskData.recipe;
+        const existingBreakdownText = taskData.cost_breakdown || "Geen kosten opbouw beschikbaar."; // Fallback text
+        // --- >>> END Fetch <<< ---
 
         // Validate refinementRequest
         if (!refinementRequest || typeof refinementRequest !== 'string' || refinementRequest.trim().length === 0) {
@@ -63,16 +97,21 @@ exports.handler = async function (event, context) {
         const trimmedRefinementRequest = refinementRequest.trim();
         // -----------------------------------
 
-        // --- Prompt for Refinement ---
+        // --- Prompt for Refinement (Updated) ---
         const prompt = `
-        Origineel Recept (kan JSON of platte tekst zijn):
-        --- START ---
-        ${trimmedOriginalRecipe}
-        --- EINDE ---
+        Origineel Recept (JSON formaat):
+        --- START RECEPT ---
+        ${originalRecipeJsonString}
+        --- EINDE RECEPT ---
+
+        Bestaande Kosten Opbouw:
+        --- START KOSTEN ---
+        ${existingBreakdownText}
+        --- EINDE KOSTEN ---
 
         Verzoek Gebruiker: "${trimmedRefinementRequest}"
 
-        Taak: Pas het originele recept aan volgens het verzoek van de gebruiker. Geef ALLEEN het volledig bijgewerkte recept terug als platte tekst. Gebruik de volgende Markdown-achtige opmaak:
+        Taak: Pas het originele recept aan volgens het verzoek van de gebruiker. Pas OOK de kosten opbouw aan zodat deze overeenkomt met het *aangepaste* recept. Geef het volledige, bijgewerkte recept EN de bijgewerkte kostenopbouw terug als één stuk platte tekst. Gebruik de volgende Markdown-achtige opmaak voor het GEHELE antwoord:
 
         # [Nieuwe Recept Titel]
 
@@ -80,26 +119,22 @@ exports.handler = async function (event, context) {
 
         ## Ingrediënten:
         - [Hoeveelheid] [Ingrediënt 1]
-        - [Hoeveelheid] [Ingrediënt 2]
-        ...
+        - ...
 
         ## Bereiding:
         1. [Stap 1]
-        2. [Stap 2]
-        ...
-
-        ## Component Suggesties: (Indien relevant)
-        - [Suggestie 1]
-        - [Suggestie 2]
-        ...
+        - ...
 
         ## Geschatte Tijd:
         - [Tijd]
 
-        ## Geschatte Kosten:
-        # Bereken en vermeld hier de geschatte totale kosten in euro's. Bijvoorbeeld: "Geschatte totale kosten: €4.50"
+        ## Geschatte Kosten Opbouw:
+        - [Ingrediënt A] ([Hoeveelheid]): €X.XX
+        - [Ingrediënt B] ([Hoeveelheid]): €Y.YY
+        - ...
+        - **Totaal Geschat:** €Z.ZZ
 
-        BELANGRIJK: Geef GEEN extra uitleg, GEEN inleidende zinnen, GEEN afsluitende zinnen en herhaal NIET de JSON structuur indien het origineel JSON was. Geef alleen het bijgewerkte recept in de gevraagde platte tekst opmaak.
+        BELANGRIJK: Geef GEEN extra uitleg, GEEN inleidende zinnen, GEEN afsluitende zinnen. Geef alleen het bijgewerkte recept en de bijgewerkte kostenopbouw in de gevraagde platte tekst opmaak.
         `;
         // ---------------------------
 
@@ -125,6 +160,26 @@ exports.handler = async function (event, context) {
         }
         console.log("Recipe refined by AI.");
         // -----------------------
+
+        // --- >>> NEW: Update async_tasks with refined text <<< ---
+        console.log(`refineRecipe: Updating task ${recipeId} with refined recipe/breakdown text...`);
+        const { error: updateError } = await supabase
+            .from('async_tasks')
+            .update({
+                cost_breakdown: refined_recipe_text, // Store the whole refined text here
+                // Optionally, try to parse and update the recipe JSON column too?
+                // This is harder as the AI might not return perfect JSON within the text.
+                updated_at: new Date().toISOString()
+            })
+            .eq('task_id', recipeId);
+
+        if (updateError) {
+            // Log error but still return result to user
+            console.error(`refineRecipe: Failed to update task ${recipeId} with refined text:`, updateError);
+        } else {
+            console.log(`refineRecipe: Successfully updated task ${recipeId}.`);
+        }
+        // --- >>> END Update <<< ---
 
         // --- Extract Cost & Return ---
         const estimated_total_cost = extractEstimatedCost(refined_recipe_text);
