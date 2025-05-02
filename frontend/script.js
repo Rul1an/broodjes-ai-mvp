@@ -113,23 +113,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     let displayTitle = recipe.idea || 'Onbekend Recept'; // Fallback title
                     let generatedRecipeJson = null;
                     let parseError = false;
+                    let recipeDetailsHtml = ''; // Initialize details HTML
 
                     // Try to parse the generated recipe JSON to get the title
-                    if (recipe.generated_recipe) {
+                    if (recipe.generated_recipe && typeof recipe.generated_recipe === 'string') {
                         try {
                             generatedRecipeJson = JSON.parse(recipe.generated_recipe);
+                            // Successfully parsed: Use JSON title and formatted text
                             if (generatedRecipeJson && typeof generatedRecipeJson.title === 'string' && generatedRecipeJson.title.trim() !== '') {
                                 displayTitle = generatedRecipeJson.title;
-                            } else {
-                                console.warn(`Recipe ID ${recipe.id}: Parsed JSON missing valid title.`);
                             }
+                            recipeDetailsHtml = `<pre class="original-recipe-text">${formatRecipeJsonToText(generatedRecipeJson) || 'Kon recept niet formatteren.'}</pre>`;
+
                         } catch (e) {
+                            // Parsing failed: Log error, use fallback title, display raw text
                             console.error(`Recipe ID ${recipe.id}: Failed to parse generated_recipe JSON:`, e);
                             console.error("Invalid JSON string:", recipe.generated_recipe);
-                            parseError = true; // Flag if parsing failed
+                            parseError = true;
+                            // displayTitle remains recipe.idea or default
+                            recipeDetailsHtml = `<pre class="original-recipe-text" style="color: #555;"><i>(Recept opgeslagen als platte tekst)</i></pre><pre>${recipe.generated_recipe}</pre>`;
                         }
                     } else {
-                        console.warn(`Recipe ID ${recipe.id}: Missing generated_recipe data.`);
+                        // Missing or not a string: Use fallback title and indicate missing data
+                        console.warn(`Recipe ID ${recipe.id}: Missing or invalid generated_recipe data.`);
+                        displayTitle = recipe.idea || 'Recept Zonder Titel';
+                        recipeDetailsHtml = `<pre class="original-recipe-text" style="color: red;">Geen receptgegevens gevonden.</pre>`;
                     }
 
                     let estimatedCostHtml = '';
@@ -139,10 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         estimatedCostHtml = `<br><small>Geschatte Kosten: €${isNaN(cost) ? 'N/A' : cost.toFixed(2)}</small>`;
                     }
 
-                    const recipeDetailsHtml = parseError
-                        ? `<pre class="original-recipe-text" style="color: red;">Kon recept niet lezen (ongeldig formaat).</pre><pre>${recipe.generated_recipe || 'Geen data'}</pre>`
-                        : `<pre class="original-recipe-text">${formatRecipeJsonToText(generatedRecipeJson) || 'Kon recept niet formatteren.'}</pre>`;
-
+                    // Construct the list item HTML (recipeDetailsHtml is now set based on parse success/failure)
                     listItem.innerHTML = `
                         <b>${displayTitle}</b>
                         <br>
