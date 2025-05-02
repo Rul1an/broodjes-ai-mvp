@@ -1,23 +1,9 @@
-const { OpenAI } = require('openai');
-const { createClient } = require('@supabase/supabase-js');
+const { getServiceClient } = require('./lib/supabaseClient');
+const { getOpenAIClient } = require('./lib/openaiClient');
+// Potentially require costUtils if extractEstimatedCost is moved there later
+// const { extractEstimatedCost } = require('./lib/costUtils');
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-
-// Initialize Supabase client (needs Service Role for reads/writes now)
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SERVICE_ROLE_KEY;
-let supabase;
-if (supabaseUrl && supabaseServiceKey) {
-    supabase = createClient(supabaseUrl, supabaseServiceKey);
-    console.log('refineRecipe: Supabase client initialized with Service Key.');
-} else {
-    console.error('refineRecipe: Missing Supabase credentials (URL or Service Key).');
-    // Function should probably fail early if Supabase isn't available
-}
-
-// Helper function to extract estimated cost (consider sharing/importing if used elsewhere)
+// Keep local helper function for now, unless moved to costUtils
 function extractEstimatedCost(text) {
     if (!text) return null;
     // Regex tries to find "Geschatte/Estimated (totale) kosten: [€/euro/eur] X.XX"
@@ -46,8 +32,15 @@ exports.handler = async function (event, context) {
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }
-    if (!supabase) {
-        return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error (DB)' }) };
+
+    // Initialize clients using shared modules
+    const supabase = getServiceClient();
+    const openai = getOpenAIClient();
+
+    // Combined check for both clients
+    if (!supabase || !openai) {
+        console.error('refineRecipe: Supabase or OpenAI client failed to initialize.');
+        return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error (clients)' }) };
     }
 
     let body;

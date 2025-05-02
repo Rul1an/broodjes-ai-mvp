@@ -1,5 +1,5 @@
-const { createClient } = require('@supabase/supabase-js');
-const OpenAI = require('openai');
+const { getServiceClient } = require('./lib/supabaseClient');
+const { getOpenAIClient } = require('./lib/openaiClient');
 
 // Retrieve secrets from environment variables
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -46,11 +46,13 @@ exports.handler = async (event, context) => {
     }
 
     // Check if clients initialized properly
+    const supabase = getServiceClient();
+    const openai = getOpenAIClient();
     if (!supabase || !openai) {
-        console.error('Supabase or OpenAI client not initialized. Check Netlify environment variables.');
+        console.error('generateRecipe: Supabase or OpenAI client not initialized. Check Netlify environment variables.');
         return {
             statusCode: 500,
-            headers: { 'Access-Control-Allow-Origin': '*' }, // Add CORS header for error response too
+            headers: { 'Access-Control-Allow-Origin': '*' },
             body: JSON.stringify({ error: 'Internal server configuration error.' })
         };
     }
