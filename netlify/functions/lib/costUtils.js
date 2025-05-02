@@ -1,3 +1,5 @@
+const { extractEstimatedCost } = require('./lib/costUtils');
+
 // --- Quantity Parsing ---
 function parseQuantityAndUnit(quantityString) {
     if (!quantityString || typeof quantityString !== 'string') {
@@ -198,6 +200,151 @@ function extractTotalFromAIBreakdown(breakdownText) {
     return null;
 }
 
+// --- Cost Extraction/Calculation Helpers from generate.js ---
+
+// Function to extract cost estimate from AI text (fallback for overall cost)
+// Looks for "Geschatte totale kosten: €X.XX"
+function extractAICostEstimate(text) {
+    if (!text) return null;
+    console.log("Attempting AI cost extraction (generate.js pattern)...");
+    const regex = /(?:\*\*?)?Geschatte\s+totale\s+kosten(?:\*\*?)?\s*[:]?\s*(?:€|euro|eur)?\s*(\d+[.,]?\d*)/i;
+    const match = text.match(regex);
+    if (match && match[1]) {
+        const costString = match[1].replace(',', '.');
+        const cost = parseFloat(costString);
+        if (!isNaN(cost)) {
+            console.log(`AI Extract (generate.js): Found cost: ${cost}`);
+            return cost;
+        }
+    }
+    console.log("AI Extract (generate.js): No cost pattern found.");
+    return null;
+}
+
+// Function to extract ingredients JSON from AI response text
+function extractIngredientsJSON(text) {
+    if (!text) return null;
+    // Look for a JSON block starting with ```json and ending with ```
+    const regex = /```json\s*(\[.*\])\s*```/s; // s flag for dot matching newlines
+    const match = text.match(regex);
+    if (match && match[1]) {
+        try {
+            const jsonData = JSON.parse(match[1]);
+            // Basic validation of the expected structure
+            if (Array.isArray(jsonData) && jsonData.every(item =>
+                item && typeof item.name === 'string' &&
+                item.quantity !== undefined /*&& typeof item.unit === 'string'*/)) { // Relaxed unit check slightly
+                console.log("Successfully extracted and validated ingredients JSON.");
+                return jsonData;
+            }
+            console.warn("Extracted JSON does not match expected format:", jsonData);
+        } catch (e) {
+            console.error("Error parsing extracted JSON:", e);
+        }
+    } else {
+        console.warn("Could not find ingredients JSON block in AI response.");
+    }
+    return null;
+}
+
+// Function to calculate cost from JSON ingredients using DB prices
+// Requires Supabase client instance as argument
+async function calculateCostFromJSON(ingredientsJson, supabase) {
+    const debugDetails = {
+        attempted: true,
+        dbFetchSuccess: false,
+        ingredientsFoundInDB: 0,
+        itemsUsedInCalc: 0,
+        calculatedValue: null,
+        skippedItems: []
+    };
+
+    if (!supabase) {
+        console.error("calculateCostFromJSON requires a valid Supabase client.");
+        debugDetails.attempted = false;
+        debugDetails.skippedItems.push({ reason: "NO_SUPABASE_CLIENT" });
+        return { cost: null, debug: debugDetails };
+    }
+    if (!ingredientsJson || !Array.isArray(ingredientsJson) || ingredientsJson.length === 0) {
+        debugDetails.attempted = false;
+        return { cost: null, debug: debugDetails };
+    }
+
+    const ingredientNames = ingredientsJson.map(item => item.name).filter(name => name); // Filter out potentially null names
+    if (ingredientNames.length === 0) {
+        debugDetails.attempted = false;
+        return { cost: null, debug: debugDetails };
+    }
+
+    let dbIngredients = [];
+    try {
+        console.log(`(calcFromJSON) Fetching DB prices for ${ingredientNames.length} ingredients...`);
+        const { data, error } = await supabase
+            .from('ingredients')
+            .select('name, unit, price_per_unit')
+            .in('name', ingredientNames);
+
+        if (error) {
+            console.error("(calcFromJSON) Supabase error fetching prices:", error);
+            debugDetails.skippedItems.push({ reason: "DB_FETCH_ERROR", details: error.message });
+            return { cost: null, debug: debugDetails };
+        }
+        dbIngredients = data || [];
+        debugDetails.dbFetchSuccess = true;
+        debugDetails.ingredientsFoundInDB = dbIngredients.length;
+        console.log(`(calcFromJSON) Found ${dbIngredients.length} matching ingredients in DB.`);
+    } catch (fetchError) {
+        console.error("(calcFromJSON) Exception fetching prices:", fetchError);
+        debugDetails.skippedItems.push({ reason: "DB_FETCH_EXCEPTION", details: fetchError.message });
+        return { cost: null, debug: debugDetails };
+    }
+
+    let calculatedCost = 0;
+    const dbPriceMap = new Map(dbIngredients.map(item => [item.name.toLowerCase(), item]));
+
+    ingredientsJson.forEach(item => {
+        const itemNameLower = item.name?.toLowerCase();
+        const dbItem = itemNameLower ? dbPriceMap.get(itemNameLower) : null;
+        let skipped = false;
+        let reason = "";
+
+        if (!itemNameLower) {
+            reason = "MISSING_NAME_IN_JSON";
+            skipped = true;
+        } else if (!dbItem || dbItem.price_per_unit === null || dbItem.price_per_unit === undefined) {
+            reason = "NOT_FOUND_IN_DB_OR_NO_PRICE";
+            skipped = true;
+        } else if (!item.unit || !dbItem.unit || String(item.unit).toLowerCase() !== String(dbItem.unit).toLowerCase()) {
+            // Note: This version doesn't attempt unit conversion like getCostBreakdown's logic
+            reason = `UNIT_MISMATCH (Recipe: '${item.unit}', DB: '${dbItem.unit}')`;
+            skipped = true;
+        } else {
+            const quantity = Number(item.quantity);
+            if (isNaN(quantity) || quantity <= 0) {
+                reason = `INVALID_QUANTITY (${item.quantity})`;
+                skipped = true;
+            } else {
+                const itemCost = quantity * dbItem.price_per_unit;
+                calculatedCost += itemCost;
+                debugDetails.itemsUsedInCalc++;
+                // console.log(`(calcFromJSON) Using ${item.name} - Qty: ${quantity}, Unit: ${item.unit}, Cost: ${itemCost.toFixed(4)}`);
+            }
+        }
+
+        if (skipped) {
+            console.warn(`(calcFromJSON) Skipping ${item.name || 'N/A'} due to ${reason}`);
+            debugDetails.skippedItems.push({ name: item.name || 'N/A', reason: reason });
+        }
+    });
+
+    debugDetails.calculatedValue = calculatedCost;
+    console.log(`(calcFromJSON) Total calculated: ${calculatedCost.toFixed(4)} from ${debugDetails.itemsUsedInCalc} items.`);
+
+    // Only return a cost if at least one item was successfully used in calculation
+    const finalCost = debugDetails.itemsUsedInCalc > 0 ? parseFloat(calculatedCost.toFixed(2)) : null;
+    return { cost: finalCost, debug: debugDetails };
+}
+
 module.exports = {
     parseQuantityAndUnit,
     normalizeUnit,
@@ -205,4 +352,8 @@ module.exports = {
     getAICostBreakdownEstimate,
     getAIEstimateForSpecificItems,
     extractTotalFromAIBreakdown,
+    extractEstimatedCost,
+    extractAICostEstimate,
+    extractIngredientsJSON,
+    calculateCostFromJSON
 };

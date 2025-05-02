@@ -1,6 +1,12 @@
 // Serverless function to generate recipes, estimate cost, and save to Supabase
 const { OpenAI } = require('openai');
-const { createClient } = require('@supabase/supabase-js'); // Import Supabase client
+// const { createClient } = require('@supabase/supabase-js'); // No longer needed directly
+const { getServiceClient } = require('./lib/supabaseClient'); // Use shared client
+const {
+    extractAICostEstimate,      // Import from costUtils
+    extractIngredientsJSON,     // Import from costUtils
+    calculateCostFromJSON       // Import from costUtils
+} = require('./lib/costUtils');
 
 // Initialize OpenAI client with API key from environment variable
 // The API key will be securely stored in Netlify's environment variables
@@ -8,140 +14,16 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-// --- Cost Calculation/Extraction Logic ---
+// --- Cost Calculation/Extraction Logic --- MOVED TO costUtils.js ---
 
 // Function to extract cost estimate from AI text (fallback for overall cost)
-function extractAICostEstimate(text) {
-    if (!text) return null;
-    console.log("Attempting AI cost extraction...");
-    // Updated regex to optionally handle markdown asterisks around the key phrase
-    // It looks for "Geschatte totale kosten" (potentially bold) followed by a number.
-    const regex = /(?:\*\*?)?Geschatte\s+totale\s+kosten(?:\*\*?)?\s*[:]?\s*(?:€|euro|eur)?\s*(\d+[.,]?\d*)/i;
-    const match = text.match(regex);
-    if (match && match[1]) {
-        // Group 1 now captures the number
-        const costString = match[1].replace(',', '.');
-        const cost = parseFloat(costString);
-        if (!isNaN(cost)) {
-            console.log(`AI Extract: Found cost: ${cost}`);
-            return cost;
-        }
-    }
-    console.log("AI Extract: No cost pattern found.");
-    return null; // Return null if no cost found
-}
+// MOVED to costUtils.js as extractAICostEstimate
 
 // NEW: Function to extract ingredients JSON from AI response text
-function extractIngredientsJSON(text) {
-    if (!text) return null;
-    // Look for a JSON block starting with ```json and ending with ```
-    const regex = /```json\\s*(\\[.*?\\])\\s*```/s; // s flag for dot matching newlines
-    const match = text.match(regex);
-    if (match && match[1]) {
-        try {
-            const jsonData = JSON.parse(match[1]);
-            // Basic validation of the expected structure
-            if (Array.isArray(jsonData) && jsonData.every(item =>
-                item && typeof item.name === 'string' &&
-                item.quantity !== undefined && typeof item.unit === 'string')) {
-                console.log("Successfully extracted and validated ingredients JSON.");
-                return jsonData;
-            }
-            console.warn("Extracted JSON does not match expected format:", jsonData);
-        } catch (e) {
-            console.error("Error parsing extracted JSON:", e);
-        }
-    } else {
-        console.warn("Could not find ingredients JSON block in AI response.");
-    }
-    return null;
-}
+// MOVED to costUtils.js as extractIngredientsJSON
 
 // NEW: Function to calculate cost from JSON ingredients using DB prices
-// Modified to return calculation details for debugging
-async function calculateCostFromJSON(ingredientsJson, supabase) {
-    const debugDetails = {
-        attempted: true,
-        dbFetchSuccess: false,
-        ingredientsFoundInDB: 0,
-        itemsUsedInCalc: 0,
-        calculatedValue: null,
-        skippedItems: []
-    };
-
-    if (!ingredientsJson || ingredientsJson.length === 0) {
-        debugDetails.attempted = false;
-        return { cost: null, debug: debugDetails };
-    }
-
-    const ingredientNames = ingredientsJson.map(item => item.name);
-    if (ingredientNames.length === 0) {
-        debugDetails.attempted = false;
-        return { cost: null, debug: debugDetails };
-    }
-
-    let dbIngredients = [];
-    try {
-        console.log(`Fetching DB prices for ${ingredientNames.length} ingredients from JSON...`);
-        const { data, error } = await supabase
-            .from('ingredients')
-            .select('name, unit, price_per_unit')
-            .in('name', ingredientNames);
-
-        if (error) {
-            console.error("Supabase error fetching ingredient prices:", error);
-            debugDetails.skippedItems.push({ reason: "DB_FETCH_ERROR", details: error.message });
-            return { cost: null, debug: debugDetails };
-        }
-        dbIngredients = data || [];
-        debugDetails.dbFetchSuccess = true;
-        debugDetails.ingredientsFoundInDB = dbIngredients.length;
-        console.log(`Found ${dbIngredients.length} matching ingredients in DB.`);
-    } catch (fetchError) {
-        console.error("Exception fetching ingredient prices:", fetchError);
-        debugDetails.skippedItems.push({ reason: "DB_FETCH_EXCEPTION", details: fetchError.message });
-        return { cost: null, debug: debugDetails };
-    }
-
-    let calculatedCost = 0;
-    const dbPriceMap = new Map(dbIngredients.map(item => [item.name.toLowerCase(), item]));
-
-    ingredientsJson.forEach(item => {
-        const dbItem = dbPriceMap.get(item.name.toLowerCase());
-        let skipped = false;
-        let reason = "";
-
-        if (!dbItem || dbItem.price_per_unit === null) {
-            reason = "NOT_FOUND_IN_DB_OR_NO_PRICE";
-            skipped = true;
-        } else if (!item.unit || !dbItem.unit || item.unit.toLowerCase() !== dbItem.unit.toLowerCase()) {
-            reason = `UNIT_MISMATCH (Recipe: '${item.unit}', DB: '${dbItem.unit}')`;
-            skipped = true;
-        } else {
-            const quantity = Number(item.quantity);
-            if (isNaN(quantity) || quantity <= 0) { // Also check for 0 or less
-                reason = `INVALID_QUANTITY (${item.quantity})`;
-                skipped = true;
-            } else {
-                const itemCost = quantity * dbItem.price_per_unit;
-                calculatedCost += itemCost;
-                debugDetails.itemsUsedInCalc++;
-                console.log(`DB Cost Calc: Using ${item.name} - Qty: ${quantity}, Unit: ${item.unit}, DB Price/Unit: ${dbItem.price_per_unit}, Item Cost: ${itemCost.toFixed(4)}`);
-            }
-        }
-
-        if (skipped) {
-            console.warn(`DB Cost Calc: Skipping ${item.name} due to ${reason}`);
-            debugDetails.skippedItems.push({ name: item.name, reason: reason });
-        }
-    });
-
-    debugDetails.calculatedValue = calculatedCost;
-    console.log(`DB Cost Calc (JSON): Total calculated cost: ${calculatedCost.toFixed(4)} from ${debugDetails.itemsUsedInCalc} items.`);
-
-    const finalCost = debugDetails.itemsUsedInCalc > 0 ? calculatedCost : null;
-    return { cost: finalCost, debug: debugDetails };
-}
+// MOVED to costUtils.js as calculateCostFromJSON
 
 // -------------------------------------
 
@@ -199,18 +81,12 @@ exports.handler = async function (event, context) {
         }
         // ----------------------------------
 
-        // Initialize Supabase client
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-
-        if (!supabaseUrl || !supabaseAnonKey) {
-            console.error('Supabase URL or Anon Key missing in generate function');
-            return {
-                statusCode: 500,
-                body: JSON.stringify({ error: 'Server configuration error' })
-            };
+        // Initialize Supabase client using shared helper (Service Role Key)
+        supabase = getServiceClient();
+        if (!supabase) {
+            console.error('generate: Supabase client failed to initialize.');
+            return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error (DB)' }) };
         }
-        supabase = createClient(supabaseUrl, supabaseAnonKey);
 
         // --- 2. Generate Recipe with OpenAI (ask for cost estimate AND JSON) ---
         const prompt = `
