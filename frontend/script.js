@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const deleteIngredientApiUrl = '/api/deleteIngredient';
     const refineRecipeApiUrl = '/api/refineRecipe';
     const clearRecipesApiUrl = '/api/clearRecipes';
+    const getCostBreakdownApiUrl = '/api/getCostBreakdown';
 
     // --- View Switching Logic ---
     const setActiveView = (viewId) => {
@@ -369,11 +370,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Function to Display Generated/Fetched Recipe in the Main Output Area ---
-    const displayRecipe = (recipe) => {
-        if (!recipe || typeof recipe !== 'object') {
+    const displayRecipe = (data) => {
+        if (!data || typeof data !== 'object' || !data.recipe || typeof data.recipe !== 'object') {
             recipeOutput.innerHTML = '<p>Fout: Ongeldige receptdata ontvangen.</p>';
             return;
         }
+
+        const recipe = data.recipe;
 
         let html = `<h2>${recipe.title || 'Onbekend Recept'}</h2>`;
         html += `<p>${recipe.description || ''}</p>`;
@@ -394,16 +397,72 @@ document.addEventListener('DOMContentLoaded', () => {
             html += '</ol>';
         }
 
-        // --- >>> NEW: Display Initial AI Cost Estimate <<< ---
-        if (recipe.initialEstimatedCost !== null && !isNaN(recipe.initialEstimatedCost)) {
-            html += `<h3>Geschatte Kosten (AI):</h3><p>€${recipe.initialEstimatedCost.toFixed(2)}</p>`;
-        } else {
-            // Optional: Show placeholder if cost wasn't returned or was invalid
-            // html += `<p><i>Kostenschatting wordt berekend...</i></p>`;
+        // --- Display Initial AI Cost Estimate ---
+        if (data.initialEstimatedCost !== null && !isNaN(data.initialEstimatedCost)) {
+            html += `<h3>Geschatte Kosten (AI):</h3><p>€${data.initialEstimatedCost.toFixed(2)}</p>`;
         }
-        // --- >>> END: Display Initial AI Cost Estimate <<< ---
+
+        // --- >>> NEW: Add Placeholder for Breakdown <<< ---
+        html += `<div id="cost-breakdown-${data.taskId}" class="cost-breakdown-container"><p><i>Kosten opbouw wordt geladen...</i></p></div>`;
 
         recipeOutput.innerHTML = html;
+    };
+
+    // --- >>> NEW: Function to Display Cost Breakdown <<< ---
+    const displayCostBreakdown = (taskId, breakdownData) => {
+        const container = document.getElementById(`cost-breakdown-${taskId}`);
+        if (!container) {
+            console.error(`Container for cost breakdown (ID: cost-breakdown-${taskId}) not found.`);
+            return;
+        }
+
+        let html = '<h3>Kosten Opbouw (Database):</h3>';
+        if (!breakdownData || !breakdownData.breakdown || !Array.isArray(breakdownData.breakdown)) {
+            html += '<p style="color: red;">Kon kosten opbouw niet laden.</p>';
+            container.innerHTML = html;
+            return;
+        }
+
+        html += '<ul>';
+        breakdownData.breakdown.forEach(item => {
+            html += `<li>${item.name} (${item.quantity_string}): `;
+            if (item.status === 'ok' && item.cost !== null) {
+                html += `€${item.cost.toFixed(2)}`;
+            } else {
+                html += `<i style="color: #888;">(${item.status}: ${item.message || 'Kon niet berekenen'})</i>`;
+            }
+            html += '</li>';
+        });
+        html += '</ul>';
+        html += `<p><b>Totaal Berekend (Database): €${breakdownData.totalCalculatedCost?.toFixed(2) || 'N/A'}</b></p>`;
+
+        container.innerHTML = html;
+    };
+
+    // --- >>> NEW: Function to Fetch Cost Breakdown <<< ---
+    const fetchCostBreakdown = async (taskId) => {
+        if (!taskId) return;
+        console.log(`Fetching cost breakdown for task ID: ${taskId}`);
+        try {
+            const response = await fetch(`${getCostBreakdownApiUrl}?taskId=${taskId}`);
+            if (!response.ok) {
+                let errorMsg = `Fout bij ophalen kosten opbouw: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorMsg;
+                } catch (e) { /* Ignore if error response is not JSON */ }
+                throw new Error(errorMsg);
+            }
+            const data = await response.json();
+            displayCostBreakdown(taskId, data);
+        } catch (error) {
+            console.error('Error fetching cost breakdown:', error);
+            // Display error in the breakdown container
+            const container = document.getElementById(`cost-breakdown-${taskId}`);
+            if (container) {
+                container.innerHTML = `<p style="color: red;">Kon kosten opbouw niet laden: ${error.message}</p>`;
+            }
+        }
     };
 
     // --- Function to Handle Recipe Generation ---
@@ -447,7 +506,8 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('GCF Success Response:', data);
 
             if (data.recipe) {
-                displayRecipe(data.recipe); // <<< Call display function directly
+                displayRecipe(data);
+                fetchCostBreakdown(data.taskId);
             } else {
                 throw new Error('Geldig antwoord ontvangen, maar geen recept gevonden.');
             }
