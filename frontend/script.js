@@ -411,57 +411,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let html = ''; // Start with empty html
+        let html = '';
 
-        // Check the type of calculation result
-        switch (breakdownData?.calculationType) {
-            case 'database':
-                html = '<h3>Kosten Opbouw (Database):</h3>';
-                if (!breakdownData.breakdown || !Array.isArray(breakdownData.breakdown)) {
-                    html += '<p style="color: orange;">Fout bij weergeven database opbouw.</p>';
-                    break;
-                }
-                html += '<ul>';
-                breakdownData.breakdown.forEach(item => {
-                    html += `<li>${item.name} (${item.quantity_string}): `;
-                    if (item.status === 'ok' && item.cost !== null) {
-                        html += `€${item.cost.toFixed(2)}`;
-                    } else {
-                        html += `<i style="color: #888;">(${item.status}: ${item.message || 'Kon niet berekenen'})</i>`;
-                    }
-                    html += '</li>';
-                });
-                html += '</ul>';
-                // Display total cost below list
-                html += `<p><b>Totaal Berekend (Database): €${breakdownData.totalCalculatedCost?.toFixed(2) || 'N/A'}</b></p>`;
-                break;
-
-            case 'ai':
-                html = '<h3>Geschatte Kosten Opbouw (AI):</h3>';
-                const aiText = breakdownData.aiBreakdownText || 'Kon AI opbouw niet weergeven.';
-                html += `<pre style="white-space: pre-wrap;">${aiText}</pre>`;
-                break;
-
-            case 'database_failed':
-                html = '<h3>Kosten Opbouw (Database Mislukt):</h3>';
-                html += '<p style="color: orange;">Database berekening onvolledig. Poging tot AI fallback mislukt (OpenAI niet geconfigureerd?).</p>';
-                // Optionally display partial results from breakdownData.breakdown here
-                // No total cost to display reliably
-                break;
-
-            case 'ai_failed':
-                html = '<h3>Kosten Opbouw (Mislukt):</h3>';
-                html += '<p style="color: red;">Database berekening onvolledig. AI fallback ook mislukt.</p>';
-                html += `<p><small>Fout: ${breakdownData.error || 'Onbekende AI fout'}</small></p>`;
-                // Optionally display partial results from breakdownData.breakdown here
-                // No total cost to display reliably
-                break;
-
-            default:
-                // Handle unexpected or missing data structure
-                console.error('Unexpected data structure received for cost breakdown:', breakdownData);
-                html = '<p style="color: red;">Fout: Onverwacht antwoord ontvangen voor kosten opbouw.</p>';
-                break;
+        if (breakdownData && breakdownData.breakdown && typeof breakdownData.breakdown === 'string') {
+            // Directly use the breakdown text from the API response
+            // Optionally add a title indicating the type
+            const typeText = breakdownData.calculationType ? `(${breakdownData.calculationType.toUpperCase()})` : '';
+            html = `<h3>Kosten Opbouw ${typeText}</h3>`;
+            html += `<pre style="white-space: pre-wrap; font-family: inherit;">${breakdownData.breakdown}</pre>`;
+        } else {
+            // Handle cases where the breakdown text is missing or invalid
+            console.error('Invalid or missing breakdown data received:', breakdownData);
+            html = '<p style="color: red;">Fout: Kon kosten opbouw niet correct weergeven (ongeldig antwoord).</p>';
         }
 
         container.innerHTML = html;
