@@ -21,10 +21,13 @@ The application is built using a combination of a static frontend, serverless fu
         *   Returns the generated recipe object and the new `taskId`.
     *   `/api/getRecipes`: Fetches saved recipe data (original recipe JSON + cost breakdown text) from the Supabase `async_tasks` table. Uses Supabase Anon Key (potential future change needed if RLS restricts).
     *   `/api/getCostBreakdown`: Calculates or estimates a detailed cost breakdown for a specific recipe task (`task_id`).
-        *   Attempts to calculate costs for each ingredient using prices from the Supabase `ingredients` table (`calculatedItems`). Identifies items that cannot be costed from DB (`failedItems`).
+        *   Attempts to calculate costs for each ingredient using prices from the Supabase `ingredients` table.
+        *   It **normalizes units** (e.g., 'gram' -> 'g', 'plakjes' -> 'stuks') from both the recipe and the database.
+        *   If units differ after normalization, it **attempts conversion** (e.g., g to kg, ml to l) using the `getConvertedQuantity` helper.
+        *   If conversion succeeds or units match, the DB price is used (`calculatedItems`). Items fail if conversion is not possible, units are incompatible, ingredient not found, or parsing fails (`failedItems`).
         *   If **all** ingredients are costed successfully from the DB (`failedItems` is empty), it returns a breakdown based solely on DB prices (`calculationType: 'db'`).
         *   If **no** ingredients can be costed from the DB (`calculatedItems` is empty), it falls back to OpenAI (`gpt-4o-mini`) for an estimate of the **entire** recipe using the `getAICostBreakdownEstimate` helper (`calculationType: 'ai'`).
-        *   If **some** ingredients are found in the DB and others are not, it performs a **precise hybrid** calculation:
+        *   If **some** ingredients are found/converted/costed from the DB and others fail, it performs a **precise hybrid** calculation:
             *   Calculates the total cost of known items from the DB (`totalDbCost`).
             *   Calls a separate helper (`getAIEstimateForSpecificItems`) that asks OpenAI (`gpt-4o-mini`) to estimate the combined cost **only** for the `failedItems`.
             *   Combines the `totalDbCost` and the AI estimate for failed items (`aiEstimateForFailed`) to get the `finalTotalCost`.
