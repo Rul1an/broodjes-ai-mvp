@@ -139,10 +139,11 @@ Ensure the following are configured correctly:
 ## 4. Potential Improvements / Areas for Review
 
 *   **Consolidate Platform:** (Done) Migrated `generateRecipe` from GCF to Netlify Functions.
-*   **Eliminate Redundancy:**
-    *   Evaluate if the `recipes` table is still necessary or if `async_tasks` can serve as the single source of truth. **(Action: Remove `recipes` table)**
-    *   Determine if the `calculateCost` GCF is still needed given the immediate calculation in `/api/getCostBreakdown`. **(Action: Remove `calculateCost` GCF, Cloud Scheduler Job, GitHub Actions Step)**
-*   **Key Usage:** Review if `/api/getRecipes` should use the Service Role Key if RLS policies might restrict access via the Anon key in the future.
-*   **Code Duplication:** Look for opportunities to share helper functions (e.g., cost calculation logic, quantity parsing) between Netlify Functions using a `lib/` directory.
-*   **Error Handling:** Enhance robustness, particularly around API calls and database interactions.
-*   **Model Consistency:** Standardize which OpenAI models are used for specific tasks (generation vs. cost vs. refinement).
+*   **Eliminate Redundancy (Next Steps):**
+    *   Remove the `recipes` table from Supabase as `async_tasks` is the source of truth.
+    *   Remove the `gcf-calculate-cost` GCF, its Cloud Scheduler Job, and any associated deployment steps (e.g., in GitHub Actions if it exists), as its functionality is covered by `/api/getCostBreakdown`.
+*   **Standardize Key Usage:** Review if `/api/getRecipes` should use the Service Role Key instead of the Anon Key, especially if Row Level Security might be implemented later.
+*   **Share Helper Code:** Create a shared `lib/` or `utils/` directory within `netlify/functions/` to centralize common helpers like `parseQuantityAndUnit`, `normalizeUnit`, `getConvertedQuantity`, etc., and import them where needed to avoid duplication.
+*   **Optimize AI Calls & Costs:** Review if the default model for generation/refinement (`gpt-4o-mini`?) is optimal. Consider fine-tuning prompts or exploring model choices further.
+*   **Enhance Error Handling & Logging:** Implement more consistent error response formats across API functions and ensure logs capture sufficient context for debugging.
+*   **Refine Unit Conversion:** Expand the `getConvertedQuantity` helper with more conversions (e.g., approximate volume units like 'el'/'tl' to 'ml') if needed based on common recipe formats.
