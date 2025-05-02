@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modelSelect = document.getElementById('model-select');
 
     // API Endpoints
-    const generateRecipeGCFUrl = 'https://europe-west1-broodjes-ai.cloudfunctions.net/generateRecipe';
+    const generateRecipeApiUrl = '/api/generateRecipe';
     const getRecipesApiUrl = '/api/getRecipes';
     const getIngredientsApiUrl = '/api/getIngredients';
     const addIngredientApiUrl = '/api/addIngredient';
@@ -470,20 +470,20 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`Generating recipe for: ${idea} using model ${model}`); // Log model usage
 
         try {
-            console.log('Sending request to GCF:', generateRecipeGCFUrl);
-            const response = await fetch(generateRecipeGCFUrl, { // <<< USE GCF URL
+            console.log('Sending request to Netlify function:', generateRecipeApiUrl);
+            const response = await fetch(generateRecipeApiUrl, { // <<< USE Netlify API URL
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ingredients: idea, type: 'broodje', language: 'Nederlands', model: model }) // Send idea as 'ingredients' and type 'broodje', include model
+                body: JSON.stringify({ ingredients: idea, type: 'broodje', language: 'Nederlands', model: model })
             });
 
-            console.log('Received response from GCF, status:', response.status);
+            console.log('Received response from Netlify function, status:', response.status);
 
             if (!response.ok) {
                 let errorMsg = `Genereren mislukt (status ${response.status})`;
                 try {
                     const errorData = await response.json();
-                    console.error('GCF Error Response:', errorData);
+                    console.error('Netlify Function Error Response:', errorData);
                     errorMsg = errorData.details || errorData.error || errorMsg;
                 } catch (e) {
                     console.error('Failed to parse error response:', await response.text());
@@ -492,13 +492,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            console.log('GCF Success Response:', data);
+            console.log('Netlify Function Success Response:', data); // Note: response no longer includes initialEstimatedCost
 
-            if (data.recipe) {
+            if (data.recipe && data.taskId) {
                 displayRecipe(data);
                 fetchCostBreakdown(data.taskId);
             } else {
-                throw new Error('Geldig antwoord ontvangen, maar geen recept gevonden.');
+                throw new Error('Geldig antwoord ontvangen, maar geen recept of taskId gevonden.'); // Adjusted error message slightly
             }
 
         } catch (error) {

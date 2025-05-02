@@ -13,6 +13,12 @@ The application is built using a combination of a static frontend, serverless fu
     *   Functionality: Handles user input for recipe ideas, displays generated/saved/refined recipes and cost breakdowns, triggers backend operations via API calls.
 
 *   **Backend - Netlify Functions (`netlify/functions/`):**
+    *   `/api/generateRecipe`: (New) Handles recipe generation requests.
+        *   Receives ingredients/idea, type, language, model from frontend.
+        *   Calls OpenAI API (model selected by user or default) to generate recipe JSON.
+        *   Saves the recipe JSON, idea, status ('completed') to the `async_tasks` table.
+        *   Uses Supabase **Service Role Key** for database write.
+        *   Returns the generated recipe object and the new `taskId`.
     *   `/api/getRecipes`: Fetches saved recipe data (original recipe JSON + cost breakdown text) from the Supabase `async_tasks` table. Uses Supabase Anon Key (potential future change needed if RLS restricts).
     *   `/api/getCostBreakdown`: Calculates or estimates a detailed cost breakdown for a specific recipe task (`task_id`).
         *   Attempts to calculate costs for each ingredient using prices from the Supabase `ingredients` table (`calculatedItems`). Identifies items that cannot be costed from DB (`failedItems`).
@@ -33,54 +39,47 @@ The application is built using a combination of a static frontend, serverless fu
         *   Requires Supabase Service Role Key for DB reads/writes.
 
 *   **Backend - Google Cloud Functions (GCF):**
-    *   `gcf-generate-recipe/index.js` (Deployed as `generateRecipe`):
-        *   Triggered via HTTP request from the frontend.
-        *   Receives recipe idea/ingredients.
-        *   Calls OpenAI (`gpt-4o` or `gpt-4o-mini`, selected by frontend) to generate the initial recipe as a JSON string.
-        *   Saves the recipe JSON to `async_tasks.recipe`.
-        *   Also inserts a record into the separate `recipes` table (role needs clarification).
-        *   Gets an *initial* total cost estimate from OpenAI during generation.
-        *   Returns the recipe JSON and the initial AI total cost estimate.
-        *   Uses Supabase **Anon Key**.
+    *   ~~`gcf-generate-recipe/index.js` (Deployed as `generateRecipe`):~~ (Removed - Logic migrated to Netlify Function `/api/generateRecipe`)
     *   `gcf-calculate-cost/index.js` (Deployed as `calculateCost`):
         *   Triggered periodically by Google Cloud Scheduler (every 5 mins).
         *   *Intended* to find tasks without cost breakdowns and calculate/estimate them (DB prices or AI fallback).
         *   Saves the result to `async_tasks.estimated_cost` (Note: this might be partially redundant now due to `/api/getCostBreakdown`).
         *   Requires Supabase Service Role Key.
+        *   **(Area for Review: Likely redundant and can be removed)**
 
 *   **Database (Supabase - PostgreSQL):**
-    *   `async_tasks` table: Primary table tracking recipe generation. Stores `task_id` (UUID), initial idea (`prompt`), status (`status`), generated recipe JSON (`recipe`), final cost breakdown text (`cost_breakdown`), timestamps (`created_at`, `updated_at`), and potentially a separate total cost (`estimated_cost`).
-    *   `recipes` table: Secondary table. `gcf-generate-recipe` currently duplicates the initial idea and recipe JSON here. Its long-term purpose requires review.
+    *   `async_tasks` table: Primary table tracking recipe generation. Stores `task_id` (UUID), initial idea (`prompt`), status (`status`), generated recipe JSON (`recipe`), final cost breakdown text (`cost_breakdown`), cost calculation type (`cost_calculation_type`), timestamps (`created_at`, `updated_at`), and potentially a separate total cost (`estimated_cost`).
+    *   ~~`recipes` table: Secondary table. `gcf-generate-recipe` currently duplicates the initial idea and recipe JSON here. Its long-term purpose requires review.~~ **(Area for Review: Likely redundant and should be removed)**
     *   `ingredients` table: Stores ingredient names and their prices (e.g., price per unit/kg) used by `/api/getCostBreakdown`.
 
 *   **External Services:**
     *   **OpenAI API:** Used for recipe generation, refinement, and cost estimation fallbacks. Keys are stored as environment variables.
-    *   **Netlify:** Hosts the frontend and Netlify Functions. Manages environment variables for these functions.
-    *   **Google Cloud Platform (GCP):** Hosts GCFs (`generateRecipe`, `calculateCost`). Manages environment variables for GCFs. Runs Cloud Scheduler for `calculateCost`.
+    *   **Netlify:** Hosts the frontend and **all** primary backend API Netlify Functions. Manages environment variables for these functions.
+    *   **Google Cloud Platform (GCP):** Hosts GCFs (`calculateCost`). Manages environment variables for GCFs. Runs Cloud Scheduler for `calculateCost`.
+        *   **(Area for Review: GCP usage can likely be eliminated by removing `calculateCost`)**
 
 *   **Source Control & CI/CD:**
     *   **GitHub (`Rul1an/broodjes-ai-mvp`):** Hosts the codebase.
     *   **Netlify:** Deploys frontend and Netlify functions automatically on pushes to the connected branch (e.g., `Broodjes-ai-v2`).
-    *   **GitHub Actions (`.github/workflows/`):** Deploys GCFs (`generateRecipe`, `calculateCost`) on pushes to the relevant branch.
+    *   **GitHub Actions (`.github/workflows/`):** Deploys GCFs (`calculateCost`) on pushes to the relevant branch.
+        *   **(Area for Review: GCF deployment step can likely be removed)**
 
 ## 2. Primary Workflows
 
 ### A. Generate New Recipe
 
 1.  **Frontend:** User enters ingredients/idea, selects model (`gpt-4o` or `gpt-4o-mini`), clicks "Generate".
-2.  **Frontend (`script.js`):** Sends POST request to the deployed `generateRecipe` GCF endpoint.
-3.  **GCF (`generateRecipe`):**
+2.  **Frontend (`script.js`):** Sends POST request to the `/api/generateRecipe` Netlify Function endpoint.
+3.  **Netlify Function (`/api/generateRecipe`):**
     *   Calls OpenAI API with the user's prompt and selected model.
     *   Receives recipe JSON from OpenAI.
-    *   Calls OpenAI again (or includes in first call) for an *initial total cost estimate*.
-    *   Saves recipe JSON to `async_tasks.recipe` (using Anon Key).
-    *   Saves recipe JSON to `recipes` table (using Anon Key).
-    *   Returns `{ recipe: <json_string>, initialEstimatedCost: <cost_string> }` to the frontend.
+    *   Saves recipe JSON, idea, model, status='completed' to `async_tasks` (using Service Key).
+    *   Returns `{ recipe: <json_object>, taskId: <new_task_id> }` to the frontend.
 4.  **Frontend (`script.js`):**
     *   Parses the response.
-    *   Formats and displays the recipe from the JSON string.
-    *   Displays the `initialEstimatedCost` temporarily.
-    *   Immediately sends POST request to `/api/getCostBreakdown` with the `task_id` from the `async_tasks` table (obtained implicitly or explicitly).
+    *   Formats and displays the recipe from the JSON object.
+    *   Adds placeholder for cost breakdown using the received `taskId`.
+    *   Immediately sends GET request to `/api/getCostBreakdown?taskId=<new_task_id>`.
 5.  **Netlify Function (`/api/getCostBreakdown`):**
     *   Fetches recipe JSON from `async_tasks` using `task_id`.
     *   Fetches prices from `ingredients` table.
@@ -127,16 +126,20 @@ Ensure the following are configured correctly:
     *   `SERVICE_ROLE_KEY` (Supabase Service Role Key)
     *   `SUPABASE_ANON_KEY` (Potentially needed by `/api/getRecipes`?)
 *   **GCP (GCF Deployment):**
-    *   `OPENAI_API_KEY`
-    *   `SUPABASE_URL`
-    *   `SUPABASE_ANON_KEY` (For `generateRecipe`)
-    *   `SERVICE_ROLE_KEY` (For `calculateCost`)
+    *   ~~`OPENAI_API_KEY` (For `generateRecipe`)~~ (Moved to Netlify)
+    *   ~~`SUPABASE_URL` (For `generateRecipe`)~~ (Moved to Netlify)
+    *   ~~`SUPABASE_ANON_KEY` (For `generateRecipe`)~~ (Moved to Netlify)
+    *   `OPENAI_API_KEY` (For `calculateCost` - remove if GCF is removed)
+    *   `SUPABASE_URL` (For `calculateCost` - remove if GCF is removed)
+    *   `SERVICE_ROLE_KEY` (For `calculateCost` - remove if GCF is removed)
 
 ## 4. Potential Improvements / Areas for Review
 
-*   **`recipes` Table Redundancy:** Evaluate if the `recipes` table is still necessary or if `async_tasks` can serve as the single source of truth.
-*   **`calculateCost` GCF:** Determine if this periodic function is still needed given the immediate calculation in `/api/getCostBreakdown`. If kept, align its update logic (e.g., target `cost_breakdown` column).
+*   **Consolidate Platform:** (Done) Migrated `generateRecipe` from GCF to Netlify Functions.
+*   **Eliminate Redundancy:**
+    *   Evaluate if the `recipes` table is still necessary or if `async_tasks` can serve as the single source of truth. **(Action: Remove `recipes` table)**
+    *   Determine if the `calculateCost` GCF is still needed given the immediate calculation in `/api/getCostBreakdown`. **(Action: Remove `calculateCost` GCF, Cloud Scheduler Job, GitHub Actions Step)**
 *   **Key Usage:** Review if `/api/getRecipes` should use the Service Role Key if RLS policies might restrict access via the Anon key in the future.
-*   **Code Duplication:** Look for opportunities to share helper functions (e.g., cost calculation logic, quantity parsing) between Netlify Functions and GCFs if feasible.
+*   **Code Duplication:** Look for opportunities to share helper functions (e.g., cost calculation logic, quantity parsing) between Netlify Functions using a `lib/` directory.
 *   **Error Handling:** Enhance robustness, particularly around API calls and database interactions.
 *   **Model Consistency:** Standardize which OpenAI models are used for specific tasks (generation vs. cost vs. refinement).

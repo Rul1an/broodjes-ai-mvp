@@ -278,7 +278,7 @@ exports.handler = async function (event, context) {
         }
         console.log(`getCostBreakdown: Finished calculation loop. DB calculated: ${calculatedItems.length}, Failed: ${failedItems.length}`);
 
-        // 7. Determine Response Type, Format Breakdown, Update DB, and Return - REVISED HYBRID LOGIC
+        // 7. Determine Response Type, Format Breakdown, Update DB, and Return - REVISED LOGIC
         let finalBreakdownText = "";
         let calculationType = "";
         let finalTotalCost = null;
