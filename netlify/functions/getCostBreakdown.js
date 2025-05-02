@@ -262,15 +262,10 @@ exports.handler = async function (event, context) {
                 failureReason = `Ingredient not found in DB`;
                 failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
-            const dbUnitNormalized = dbIngredient.unit?.toLowerCase();
-            if (dbUnitNormalized !== quantityUnit) {
-                failureReason = `Unit mismatch (Recipe: '${quantityUnit}', DB: '${dbUnitNormalized}')`;
-                failedItems.push({ ...itemInfo, reason: failureReason, dbUnit: dbUnitNormalized, dbPrice: dbIngredient.price_per_unit }); continue;
-            }
             const ingredientCost = quantityValue * dbIngredient.price_per_unit;
             if (isNaN(ingredientCost)) {
                 failureReason = 'Calculated cost is NaN';
-                failedItems.push({ ...itemInfo, reason: failureReason, dbUnit: dbUnitNormalized, dbPrice: dbIngredient.price_per_unit }); continue;
+                failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
             const calculatedCost = parseFloat(ingredientCost.toFixed(4));
             calculatedItems.push({ ...itemInfo, cost: calculatedCost, unit: quantityUnit, quantity_value: quantityValue });
