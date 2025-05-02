@@ -612,8 +612,8 @@ function formatRecipeJsonToText(recipeJson) {
 function extractEstimatedCost(text) {
     if (!text) return null;
 
-    // 1. Try to find the specific "Totaal Geschat: €X.XX" pattern
-    const specificTotalRegex = /Totaal\s+Geschat\s*[:]?\s*(?:€|euro|eur)?\s*(\d+[.,]?\d*)/i;
+    // 1. Try to find the specific "Totaal Geschat: €X.XX" pattern (more robust)
+    const specificTotalRegex = /(?:\*\*|-)?\s*[Tt]otaal\s+Geschat\s*(?:\*\*|:)?\s*(?:€|euro|eur)?\s*(\d+[.,]?\d*)/i;
     const specificMatch = text.match(specificTotalRegex);
     if (specificMatch && specificMatch[1]) {
         const costString = specificMatch[1].replace(',', '.');
