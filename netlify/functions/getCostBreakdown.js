@@ -134,7 +134,7 @@ exports.handler = async function (event, context) {
     // 2. Initialize Supabase Client
     const supabaseUrl = process.env.SUPABASE_URL;
     // const supabaseAnonKey = process.env.SUPABASE_ANON_KEY; // Need Service Role for updates
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseServiceKey = process.env.SERVICE_ROLE_KEY;
     if (!supabaseUrl || !supabaseServiceKey) {
         console.error('getCostBreakdown: Supabase URL or Service Key missing');
         return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error' }) };
