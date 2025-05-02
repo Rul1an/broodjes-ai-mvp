@@ -611,15 +611,26 @@ function formatRecipeJsonToText(recipeJson) {
 // --- Helper function to extract estimated cost from text (frontend version) ---
 function extractEstimatedCost(text) {
     if (!text) return null;
-    // Regex tries to find "Geschatte/Estimated (totale) kosten: [€/euro/eur] X.XX"
-    const regex = /(?:geschatt(?:e|e)|estimated)\s+(?:totale)?\s*kosten\s*[:]?\s*(?:€|euro|eur)?\s*(\d+[.,]?\d*)/i;
-    const match = text.match(regex);
-    if (match && match[1]) {
-        const costString = match[1].replace(',', '.');
+
+    // 1. Try to find the specific "Totaal Geschat: €X.XX" pattern
+    const specificTotalRegex = /Totaal\s+Geschat\s*[:]?\s*(?:€|euro|eur)?\s*(\d+[.,]?\d*)/i;
+    const specificMatch = text.match(specificTotalRegex);
+    if (specificMatch && specificMatch[1]) {
+        const costString = specificMatch[1].replace(',', '.');
         const cost = parseFloat(costString);
         if (!isNaN(cost)) return cost;
     }
-    // Fallback: Look for a euro amount possibly followed by "geschat" or "estimated"
+
+    // 2. Try the original primary regex "Geschatte totale kosten: ..."
+    const originalRegex = /(?:geschatt(?:e|e)|estimated)\s+(?:totale)?\s*kosten\s*[:]?\s*(?:€|euro|eur)?\s*(\d+[.,]?\d*)/i;
+    const originalMatch = text.match(originalRegex);
+    if (originalMatch && originalMatch[1]) {
+        const costString = originalMatch[1].replace(',', '.');
+        const cost = parseFloat(costString);
+        if (!isNaN(cost)) return cost;
+    }
+
+    // 3. Try the original fallback regex (less reliable)
     const fallbackRegex = /(?:€|euro|eur)?\s*(\d+[.,]?\d*)\s*(?:geschat|estimated)?$/im; // Added multiline flag
     const fallbackMatch = text.match(fallbackRegex);
     if (fallbackMatch && fallbackMatch[1]) {
@@ -627,6 +638,7 @@ function extractEstimatedCost(text) {
         const cost = parseFloat(costString);
         if (!isNaN(cost)) return cost;
     }
-    console.warn("Could not extract cost from text using regex.");
+
+    console.warn("Could not extract total cost from text using regex.");
     return null;
 }
