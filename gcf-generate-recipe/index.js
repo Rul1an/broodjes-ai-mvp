@@ -182,6 +182,31 @@ functions.http('generateRecipe', async (req, res) => {
         console.log('OpenAI response structure validation passed.');
         // --- End OpenAI Response Validation ---
 
+        // --- >>> NEW: Insert into 'recipes' table <<< ---
+        try {
+            console.log(`Inserting successful recipe into 'recipes' table...`);
+            const { error: insertError } = await supabase
+                .from('recipes')
+                .insert({
+                    idea: ingredients, // The original input string
+                    generated_recipe: JSON.stringify(recipeResultJson) // The generated recipe JSON string
+                    // estimated_total_cost: null // Add later if calculation logic is implemented
+                });
+
+            if (insertError) {
+                // Log the error but don't stop the function; the user still gets the recipe
+                console.error('Failed to insert recipe into \'recipes\' table:', insertError);
+                // Optional: You could update the async_task with a warning or partial success status here
+            } else {
+                console.log('Successfully inserted recipe into \'recipes\' table.');
+            }
+        } catch (dbInsertError) {
+            // Catch any unexpected errors during the insert
+            console.error('Exception during recipe insertion into \'recipes\' table:', dbInsertError);
+        }
+        // --- >>> END: Insert into 'recipes' table <<< ---
+
+
         // --- (Optional) Update Task Status: Success ---
         await updateTaskStatus(taskId, 'completed', JSON.stringify(recipeResultJson));
         // --- End Task Update ---
