@@ -440,13 +440,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 html = '<h3>Geschatte Kosten Opbouw (AI):</h3>';
                 const aiText = breakdownData.aiBreakdownText || 'Kon AI opbouw niet weergeven.';
                 html += `<pre style="white-space: pre-wrap;">${aiText}</pre>`;
-                // Attempt to extract total cost from AI text and display it
-                const extractedAiCost = extractEstimatedCost(aiText);
-                if (extractedAiCost !== null) {
-                    html += `<p><b>Totaal Geschat (AI): €${extractedAiCost.toFixed(2)}</b></p>`;
-                } else {
-                    html += `<p><b>Totaal Geschat (AI): Kon niet extraheren uit tekst</b></p>`;
-                }
                 break;
 
             case 'database_failed':
