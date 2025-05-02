@@ -1,4 +1,15 @@
 const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
+
+// Initialize OpenAI client
+let openai;
+const openaiApiKey = process.env.OPENAI_API_KEY;
+if (openaiApiKey) {
+    openai = new OpenAI({ apiKey: openaiApiKey });
+    console.log('getCostBreakdown: OpenAI client initialized.');
+} else {
+    console.warn('getCostBreakdown: Missing OPENAI_API_KEY. AI cost breakdown fallback will not be available.');
+}
 
 // --- Helper function for Quantity Parsing (Copied from gcf-calculate-cost) ---
 function parseQuantityAndUnit(quantityString) {
@@ -33,6 +44,58 @@ function parseQuantityAndUnit(quantityString) {
     return { value, unit };
 }
 // --- End Helper Function ---
+
+// --- >>> NEW: Helper function for AI Cost Breakdown Estimation <<< ---
+async function getAICostBreakdownEstimate(recipeJson) {
+    if (!openai) {
+        console.error('Cannot estimate AI breakdown: OpenAI client not initialized.');
+        return null;
+    }
+    if (!recipeJson || !recipeJson.ingredients || !Array.isArray(recipeJson.ingredients)) {
+        console.error('Cannot estimate AI breakdown: Invalid recipe JSON format.');
+        return null;
+    }
+
+    const ingredientsList = recipeJson.ingredients.map(ing => `- ${ing.quantity || ''} ${ing.name || 'Unknown'}`).join('\n');
+    const title = recipeJson.title || 'Recept';
+
+    const prompt = `
+    Maak een geschatte kostenopbouw in Euro's (€) voor het recept "${title}" met de volgende ingrediënten, gebaseerd op gemiddelde Nederlandse supermarktprijzen. Geef een lijst per ingrediënt en een totaal.
+
+    Formaat voorbeeld:
+    ## Geschatte Kosten Opbouw:
+    - Ingrediënt 1 (Hoeveelheid): €X.XX
+    - Ingrediënt 2 (Hoeveelheid): €Y.YY
+    - ...
+    - **Totaal Geschat:** €Z.ZZ
+
+    Ingrediënten:
+    ${ingredientsList}
+
+    Geef ALLEEN de kostenopbouw in dit formaat terug, zonder extra uitleg.
+    `;
+
+    try {
+        console.log('Requesting AI cost breakdown estimation...');
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: "Je bent een assistent die kostenopbouwen voor recepten schat in Euro's. Reageer alleen met de gevraagde opbouw." },
+                { role: "user", content: prompt },
+            ],
+            temperature: 0.3,
+        });
+
+        const aiResponse = completion.choices[0]?.message?.content?.trim();
+        console.log('Raw AI cost breakdown response:', aiResponse);
+
+        return aiResponse || null; // Return the raw text or null if empty
+
+    } catch (error) {
+        console.error('Error calling OpenAI API for AI cost breakdown:', error);
+        return null;
+    }
+}
 
 exports.handler = async function (event, context) {
     // 1. Validate Request
@@ -98,6 +161,7 @@ exports.handler = async function (event, context) {
         // 6. Calculate Breakdown
         let totalCalculatedCost = 0;
         const breakdown = [];
+        let programmaticCalculationIncomplete = false; // <<< Flag for failure
 
         console.log(`getCostBreakdown: Calculating breakdown for task ${taskId}...`);
         for (const recipeIngredient of recipeJson.ingredients) {
@@ -118,6 +182,7 @@ exports.handler = async function (event, context) {
                 result.status = 'parse_error';
                 result.message = 'Missing ingredient name in recipe.';
                 breakdown.push(result);
+                programmaticCalculationIncomplete = true; // <<< Mark failure
                 continue;
             }
 
@@ -130,6 +195,7 @@ exports.handler = async function (event, context) {
                 result.status = 'parse_error';
                 result.message = `Could not parse quantity/unit '${recipeIngredient.quantity}'.`;
                 breakdown.push(result);
+                programmaticCalculationIncomplete = true; // <<< Mark failure
                 continue;
             }
 
@@ -139,6 +205,7 @@ exports.handler = async function (event, context) {
                 result.status = 'not_found';
                 result.message = `Ingredient not found in database.`;
                 breakdown.push(result);
+                programmaticCalculationIncomplete = true; // <<< Mark failure
                 continue;
             }
             result.db_price_per_unit = dbIngredient.price_per_unit;
@@ -151,6 +218,7 @@ exports.handler = async function (event, context) {
                 result.message = `Unit mismatch. Recipe: '${quantityUnit}', DB: '${dbUnitNormalized}'.`;
                 // TODO: Add unit conversion logic here if desired
                 breakdown.push(result);
+                programmaticCalculationIncomplete = true; // <<< Mark failure
                 continue;
             }
 
@@ -160,6 +228,7 @@ exports.handler = async function (event, context) {
                 result.status = 'error';
                 result.message = 'Calculated cost resulted in NaN.';
                 breakdown.push(result);
+                programmaticCalculationIncomplete = true; // <<< Mark failure
                 continue;
             }
 
@@ -168,17 +237,69 @@ exports.handler = async function (event, context) {
             breakdown.push(result); // Add successful result
         }
 
-        console.log(`getCostBreakdown: Finished calculation for task ${taskId}. Total calculated cost: ${totalCalculatedCost}`);
+        console.log(`getCostBreakdown: Finished calculation loop for task ${taskId}. Incomplete: ${programmaticCalculationIncomplete}`);
 
-        // 7. Return Response
-        return {
-            statusCode: 200,
-            body: JSON.stringify({
-                taskId: taskId,
-                breakdown: breakdown,
-                totalCalculatedCost: parseFloat(totalCalculatedCost.toFixed(2)) // Return total cost rounded
-            }),
-        };
+        // 7. Determine Response Type and Return
+        if (!programmaticCalculationIncomplete && breakdown.length > 0) {
+            // Programmatic success
+            console.log(`getCostBreakdown: Programmatic calculation successful. Total: ${totalCalculatedCost}`);
+            return {
+                statusCode: 200,
+                body: JSON.stringify({
+                    calculationType: 'database',
+                    taskId: taskId,
+                    breakdown: breakdown,
+                    totalCalculatedCost: parseFloat(totalCalculatedCost.toFixed(2))
+                }),
+            };
+        } else {
+            // Programmatic failed or incomplete, try AI fallback
+            console.log(`getCostBreakdown: Programmatic calculation failed or incomplete. Attempting AI fallback.`);
+            if (!openai) {
+                console.warn('getCostBreakdown: Cannot fall back to AI, OpenAI client not initialized.');
+                // Return the partial/failed programmatic breakdown instead?
+                return {
+                    statusCode: 200, // Still success, but indicate partial data
+                    body: JSON.stringify({
+                        calculationType: 'database_failed', // Indicate failure
+                        taskId: taskId,
+                        breakdown: breakdown, // Send partial/failed results
+                        totalCalculatedCost: null
+                    }),
+                };
+            }
+
+            try {
+                const aiBreakdownText = await getAICostBreakdownEstimate(recipeJson);
+                if (aiBreakdownText) {
+                    console.log(`getCostBreakdown: AI fallback successful.`);
+                    return {
+                        statusCode: 200,
+                        body: JSON.stringify({
+                            calculationType: 'ai',
+                            taskId: taskId,
+                            aiBreakdownText: aiBreakdownText
+                        }),
+                    };
+                } else {
+                    console.error(`getCostBreakdown: AI fallback failed to generate text.`);
+                    throw new Error('AI fallback failed to generate breakdown.');
+                }
+            } catch (aiError) {
+                console.error(`getCostBreakdown: Error during AI fallback:`, aiError);
+                // Return the partial/failed programmatic breakdown if AI fails too
+                return {
+                    statusCode: 200, // Or 500 if AI error is critical?
+                    body: JSON.stringify({
+                        calculationType: 'ai_failed', // Indicate AI failure too
+                        taskId: taskId,
+                        breakdown: breakdown,
+                        totalCalculatedCost: null,
+                        error: aiError.message
+                    }),
+                };
+            }
+        }
 
     } catch (error) {
         console.error(`getCostBreakdown: Error processing taskId ${taskId}:`, error);

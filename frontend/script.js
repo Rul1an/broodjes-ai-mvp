@@ -416,25 +416,55 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let html = '<h3>Kosten Opbouw (Database):</h3>';
-        if (!breakdownData || !breakdownData.breakdown || !Array.isArray(breakdownData.breakdown)) {
-            html += '<p style="color: red;">Kon kosten opbouw niet laden.</p>';
-            container.innerHTML = html;
-            return;
-        }
+        let html = ''; // Start with empty html
 
-        html += '<ul>';
-        breakdownData.breakdown.forEach(item => {
-            html += `<li>${item.name} (${item.quantity_string}): `;
-            if (item.status === 'ok' && item.cost !== null) {
-                html += `€${item.cost.toFixed(2)}`;
-            } else {
-                html += `<i style="color: #888;">(${item.status}: ${item.message || 'Kon niet berekenen'})</i>`;
-            }
-            html += '</li>';
-        });
-        html += '</ul>';
-        html += `<p><b>Totaal Berekend (Database): €${breakdownData.totalCalculatedCost?.toFixed(2) || 'N/A'}</b></p>`;
+        // Check the type of calculation result
+        switch (breakdownData?.calculationType) {
+            case 'database':
+                html = '<h3>Kosten Opbouw (Database):</h3>';
+                if (!breakdownData.breakdown || !Array.isArray(breakdownData.breakdown)) {
+                    html += '<p style="color: orange;">Fout bij weergeven database opbouw.</p>';
+                    break;
+                }
+                html += '<ul>';
+                breakdownData.breakdown.forEach(item => {
+                    html += `<li>${item.name} (${item.quantity_string}): `;
+                    if (item.status === 'ok' && item.cost !== null) {
+                        html += `€${item.cost.toFixed(2)}`;
+                    } else {
+                        html += `<i style="color: #888;">(${item.status}: ${item.message || 'Kon niet berekenen'})</i>`;
+                    }
+                    html += '</li>';
+                });
+                html += '</ul>';
+                html += `<p><b>Totaal Berekend (Database): €${breakdownData.totalCalculatedCost?.toFixed(2) || 'N/A'}</b></p>`;
+                break;
+
+            case 'ai':
+                html = '<h3>Geschatte Kosten Opbouw (AI):</h3>';
+                // Display raw AI text, maybe wrap in <pre> for formatting
+                html += `<pre style="white-space: pre-wrap;">${breakdownData.aiBreakdownText || 'Kon AI opbouw niet weergeven.'}</pre>`;
+                break;
+
+            case 'database_failed':
+                html = '<h3>Kosten Opbouw (Database):</h3>';
+                html += '<p style="color: orange;">Database berekening onvolledig. Poging tot AI fallback mislukt (OpenAI niet geconfigureerd?).</p>';
+                // Optionally display partial results from breakdownData.breakdown here
+                break;
+
+            case 'ai_failed':
+                html = '<h3>Kosten Opbouw (Database):</h3>';
+                html += '<p style="color: red;">Database berekening onvolledig. AI fallback ook mislukt.</p>';
+                html += `<p><small>Fout: ${breakdownData.error || 'Onbekende AI fout'}</small></p>`;
+                // Optionally display partial results from breakdownData.breakdown here
+                break;
+
+            default:
+                // Handle unexpected or missing data structure
+                console.error('Unexpected data structure received for cost breakdown:', breakdownData);
+                html = '<p style="color: red;">Fout: Onverwacht antwoord ontvangen voor kosten opbouw.</p>';
+                break;
+        }
 
         container.innerHTML = html;
     };
