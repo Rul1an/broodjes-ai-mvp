@@ -393,7 +393,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             html += '</ol>';
         }
-        // You can add more fields here if the GCF returns them
+
+        // --- >>> NEW: Display Initial AI Cost Estimate <<< ---
+        if (recipe.initialEstimatedCost !== null && !isNaN(recipe.initialEstimatedCost)) {
+            html += `<h3>Geschatte Kosten (AI):</h3><p>€${recipe.initialEstimatedCost.toFixed(2)}</p>`;
+        } else {
+            // Optional: Show placeholder if cost wasn't returned or was invalid
+            // html += `<p><i>Kostenschatting wordt berekend...</i></p>`;
+        }
+        // --- >>> END: Display Initial AI Cost Estimate <<< ---
 
         recipeOutput.innerHTML = html;
     };
