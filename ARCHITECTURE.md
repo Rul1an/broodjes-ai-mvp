@@ -43,29 +43,22 @@ The application is built using a combination of a static frontend, serverless fu
 
 *   **Backend - Google Cloud Functions (GCF):**
     *   ~~`gcf-generate-recipe/index.js` (Deployed as `generateRecipe`):~~ (Removed - Logic migrated to Netlify Function `/api/generateRecipe`)
-    *   `gcf-calculate-cost/index.js` (Deployed as `calculateCost`):
-        *   Triggered periodically by Google Cloud Scheduler (every 5 mins).
-        *   *Intended* to find tasks without cost breakdowns and calculate/estimate them (DB prices or AI fallback).
-        *   Saves the result to `async_tasks.estimated_cost` (Note: this might be partially redundant now due to `/api/getCostBreakdown`).
-        *   Requires Supabase Service Role Key.
-        *   **(Area for Review: Likely redundant and can be removed)**
+    *   ~~`gcf-calculate-cost/index.js` (Deployed as `calculateCost`):~~ (Removed - Functionality covered by `/api/getCostBreakdown`)
 
 *   **Database (Supabase - PostgreSQL):**
     *   `async_tasks` table: Primary table tracking recipe generation. Stores `task_id` (UUID), initial idea (`prompt`), status (`status`), generated recipe JSON (`recipe`), final cost breakdown text (`cost_breakdown`), cost calculation type (`cost_calculation_type`), timestamps (`created_at`, `updated_at`), and potentially a separate total cost (`estimated_cost`).
-    *   ~~`recipes` table: Secondary table. `gcf-generate-recipe` currently duplicates the initial idea and recipe JSON here. Its long-term purpose requires review.~~ **(Area for Review: Likely redundant and should be removed)**
+    *   ~~`recipes` table:~~ (Removed - Redundant)
     *   `ingredients` table: Stores ingredient names and their prices (e.g., price per unit/kg) used by `/api/getCostBreakdown`.
 
 *   **External Services:**
     *   **OpenAI API:** Used for recipe generation, refinement, and cost estimation fallbacks. Keys are stored as environment variables.
-    *   **Netlify:** Hosts the frontend and **all** primary backend API Netlify Functions. Manages environment variables for these functions.
-    *   **Google Cloud Platform (GCP):** Hosts GCFs (`calculateCost`). Manages environment variables for GCFs. Runs Cloud Scheduler for `calculateCost`.
-        *   **(Area for Review: GCP usage can likely be eliminated by removing `calculateCost`)**
+    *   **Netlify:** Hosts the frontend and **all** backend API Netlify Functions. Manages environment variables for these functions.
+    *   ~~**Google Cloud Platform (GCP):**~~ (Removed - No longer used for functions or scheduler in this project)
 
 *   **Source Control & CI/CD:**
     *   **GitHub (`Rul1an/broodjes-ai-mvp`):** Hosts the codebase.
     *   **Netlify:** Deploys frontend and Netlify functions automatically on pushes to the connected branch (e.g., `Broodjes-ai-v2`).
-    *   **GitHub Actions (`.github/workflows/`):** Deploys GCFs (`calculateCost`) on pushes to the relevant branch.
-        *   **(Area for Review: GCF deployment step can likely be removed)**
+    *   ~~**GitHub Actions (`.github/workflows/`):** Deploys GCFs (`calculateCost`) on pushes to the relevant branch.~~ (Removed - GCF deployment no longer needed, review workflow file if it exists)
 
 ## 2. Primary Workflows
 
@@ -128,20 +121,12 @@ Ensure the following are configured correctly:
     *   `SUPABASE_URL`
     *   `SERVICE_ROLE_KEY` (Supabase Service Role Key)
     *   `SUPABASE_ANON_KEY` (Potentially needed by `/api/getRecipes`?)
-*   **GCP (GCF Deployment):**
-    *   ~~`OPENAI_API_KEY` (For `generateRecipe`)~~ (Moved to Netlify)
-    *   ~~`SUPABASE_URL` (For `generateRecipe`)~~ (Moved to Netlify)
-    *   ~~`SUPABASE_ANON_KEY` (For `generateRecipe`)~~ (Moved to Netlify)
-    *   `OPENAI_API_KEY` (For `calculateCost` - remove if GCF is removed)
-    *   `SUPABASE_URL` (For `calculateCost` - remove if GCF is removed)
-    *   `SERVICE_ROLE_KEY` (For `calculateCost` - remove if GCF is removed)
+*   ~~**GCP (GCF Deployment):**~~ (Removed)
 
 ## 4. Potential Improvements / Areas for Review
 
 *   **Consolidate Platform:** (Done) Migrated `generateRecipe` from GCF to Netlify Functions.
-*   **Eliminate Redundancy (Next Steps):**
-    *   Remove the `recipes` table from Supabase as `async_tasks` is the source of truth.
-    *   Remove the `gcf-calculate-cost` GCF, its Cloud Scheduler Job, and any associated deployment steps (e.g., in GitHub Actions if it exists), as its functionality is covered by `/api/getCostBreakdown`.
+*   **Eliminate Redundancy:** (Done) Removed `recipes` table, `calculateCost` GCF, and Cloud Scheduler Job.
 *   **Standardize Key Usage:** Review if `/api/getRecipes` should use the Service Role Key instead of the Anon Key, especially if Row Level Security might be implemented later.
 *   **Share Helper Code:** Create a shared `lib/` or `utils/` directory within `netlify/functions/` to centralize common helpers like `parseQuantityAndUnit`, `normalizeUnit`, `getConvertedQuantity`, etc., and import them where needed to avoid duplication.
 *   **Optimize AI Calls & Costs:** Review if the default model for generation/refinement (`gpt-4o-mini`?) is optimal. Consider fine-tuning prompts or exploring model choices further.
