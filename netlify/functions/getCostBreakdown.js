@@ -102,8 +102,8 @@ function extractTotalFromAIBreakdown(breakdownText) {
     if (!breakdownText) return null;
     // Regex to find "Totaal Geschat: €Z.ZZ" or similar variations
     // Making it case-insensitive and allowing for different currency symbols/placements
-    // Corrected optional asterisks `(?:\*\*)?` around the text part.
-    const regex = /(?:(?:\*\*)?(?:totaal|total)\s+(?:geschat|estimated)(?:\*\*)?)[:]?\s*(?:€|eur|euro)?\s*(\d+[.,]?\d*)/i;
+    // Added optional asterisks `(?:\*\*)?` around the text part and the multiline 'm' flag.
+    const regex = /(?:(?:\*\*)?(?:totaal|total)\s+(?:geschat|estimated)(?:\*\*)?)[:]?\s*(?:€|eur|euro)?\s*(\d+[.,]?\d*)/im;
     const match = breakdownText.match(regex);
     if (match && match[1]) {
         try {
