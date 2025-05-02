@@ -122,6 +122,59 @@ function extractTotalFromAIBreakdown(breakdownText) {
 }
 // --- >>> END NEW Helper <<< ---
 
+// --- >>> NEW: Helper function for AI Cost Estimation of SPECIFIC Failed Items <<< ---
+async function getAIEstimateForSpecificItems(failedItemsList) {
+    if (!openai) {
+        console.error('Cannot estimate specific items: OpenAI client not initialized.');
+        return null;
+    }
+    if (!failedItemsList || !Array.isArray(failedItemsList) || failedItemsList.length === 0) {
+        console.warn('Cannot estimate specific items: Invalid or empty list provided.');
+        return 0; // Return 0 cost if list is empty
+    }
+
+    const ingredientsToEstimate = failedItemsList.map(item => `- ${item.quantity_string || ''} ${item.name || 'Unknown'} (${item.reason || 'reason unknown'})`).join('\n');
+
+    const prompt = `
+    Schat de gecombineerde kosten in Euro's (€) ALLEEN voor de volgende lijst met ingrediënten (hoeveelheden en redenen voor falen zijn ter info), gebaseerd op gemiddelde Nederlandse supermarktprijzen.
+
+    Geef ALLEEN het totale geschatte numerieke bedrag terug (bijv. "3.45"). Geef GEEN valutasymbool, GEEN extra uitleg, GEEN lijst per item.
+
+    Te schatten ingrediënten:
+    ${ingredientsToEstimate}
+    `;
+
+    try {
+        console.log(`Requesting AI cost estimation for ${failedItemsList.length} specific items...`);
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini", // Still efficient for this task
+            messages: [
+                { role: "system", content: "Je bent een assistent die de gecombineerde kosten van een lijst ingrediënten schat in Euro's. Reageer ALLEEN met het totale numerieke bedrag (bv. 4.75)." },
+                { role: "user", content: prompt },
+            ],
+            temperature: 0.2, // Lower temperature for more deterministic numerical output
+        });
+
+        const aiResponse = completion.choices[0]?.message?.content?.trim();
+        console.log('Raw AI specific item cost response:', aiResponse);
+
+        if (aiResponse) {
+            const cost = parseFloat(aiResponse.replace(',', '.'));
+            if (!isNaN(cost)) {
+                console.log(`Parsed AI specific item cost: ${cost}`);
+                return cost;
+            }
+        }
+        console.error('Failed to parse numerical cost from AI response for specific items:', aiResponse);
+        return null; // Indicate failure to parse
+
+    } catch (error) {
+        console.error('Error calling OpenAI API for specific item cost estimation:', error);
+        return null; // Indicate API error
+    }
+}
+// --- >>> END NEW Specific Item Helper <<< ---
+
 exports.handler = async function (event, context) {
     // 1. Validate Request
     if (event.httpMethod !== 'GET') {
@@ -186,170 +239,122 @@ exports.handler = async function (event, context) {
 
         // 6. Calculate Breakdown - REVISED LOGIC
         let totalDbCost = 0;
-        const calculatedItems = []; // Store items successfully calculated from DB
-        const failedItems = []; // Store items that failed DB calculation
-
-        console.log(`getCostBreakdown: Calculating breakdown for task ${taskId} (Hybrid Approach)...`);
+        const calculatedItems = [];
+        const failedItems = [];
+        console.log(`getCostBreakdown: Calculating breakdown for task ${taskId} (Hybrid Approach V2)...`);
         for (const recipeIngredient of recipeJson.ingredients) {
             const ingredientName = recipeIngredient.name?.toLowerCase();
             const quantityString = recipeIngredient.quantity || '';
-            let failureReason = null; // Track reason for failure
-
-            // Basic info for tracking
-            const itemInfo = {
-                name: recipeIngredient.name || 'Unknown',
-                quantity_string: quantityString,
-            };
+            let failureReason = null;
+            const itemInfo = { name: recipeIngredient.name || 'Unknown', quantity_string: quantityString };
 
             if (!ingredientName) {
-                result.status = 'parse_error';
-                result.message = 'Missing ingredient name in recipe.';
-                breakdown.push(result);
-                programmaticCalculationIncomplete = true; // <<< Mark failure
-                continue;
+                failureReason = 'Missing ingredient name';
+                failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
-
-            // Parse quantity and unit
             const { value: quantityValue, unit: quantityUnit } = parseQuantityAndUnit(quantityString);
             if (isNaN(quantityValue) || quantityUnit === null || ['naar smaak', 'snufje', 'beetje'].includes(quantityUnit)) {
-                failureReason = `Could not parse quantity/unit '${quantityString}'.`;
-                failedItems.push({ ...itemInfo, reason: failureReason });
-                continue;
+                failureReason = `Could not parse quantity/unit '${quantityString}'`;
+                failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
-
-            // Find ingredient in DB
             const dbIngredient = ingredientPriceMap.get(ingredientName);
             if (!dbIngredient) {
-                failureReason = `Ingredient not found in database.`;
-                failedItems.push({ ...itemInfo, reason: failureReason });
-                continue;
+                failureReason = `Ingredient not found in DB`;
+                failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
-
-            // Compare units (simple match)
             const dbUnitNormalized = dbIngredient.unit?.toLowerCase();
             if (dbUnitNormalized !== quantityUnit) {
-                // TODO: Add unit conversion logic here if desired
-                failureReason = `Unit mismatch. Recipe: '${quantityUnit}', DB: '${dbUnitNormalized}'.`;
-                failedItems.push({ ...itemInfo, reason: failureReason, dbUnit: dbUnitNormalized, dbPrice: dbIngredient.price_per_unit }); // Include DB info for potential future use
-                continue;
+                failureReason = `Unit mismatch (Recipe: '${quantityUnit}', DB: '${dbUnitNormalized}')`;
+                failedItems.push({ ...itemInfo, reason: failureReason, dbUnit: dbUnitNormalized, dbPrice: dbIngredient.price_per_unit }); continue;
             }
-
-            // Calculate cost
             const ingredientCost = quantityValue * dbIngredient.price_per_unit;
             if (isNaN(ingredientCost)) {
-                failureReason = 'Calculated cost resulted in NaN.';
-                failedItems.push({ ...itemInfo, reason: failureReason, dbUnit: dbUnitNormalized, dbPrice: dbIngredient.price_per_unit });
-                continue;
+                failureReason = 'Calculated cost is NaN';
+                failedItems.push({ ...itemInfo, reason: failureReason, dbUnit: dbUnitNormalized, dbPrice: dbIngredient.price_per_unit }); continue;
             }
-
-            // If all checks passed, add to calculatedItems
-            const calculatedCost = parseFloat(ingredientCost.toFixed(4)); // Use 4 decimal places for calculation
-            calculatedItems.push({
-                ...itemInfo,
-                cost: calculatedCost,
-                unit: quantityUnit, // Store the matched unit
-                quantity_value: quantityValue
-            });
+            const calculatedCost = parseFloat(ingredientCost.toFixed(4));
+            calculatedItems.push({ ...itemInfo, cost: calculatedCost, unit: quantityUnit, quantity_value: quantityValue });
             totalDbCost += calculatedCost;
-        } // End of loop through ingredients
-
+        }
         console.log(`getCostBreakdown: Finished calculation loop. DB calculated: ${calculatedItems.length}, Failed: ${failedItems.length}`);
 
-        // 7. Determine Response Type, Format Breakdown, Update DB, and Return - REVISED LOGIC
+        // 7. Determine Response Type, Format Breakdown, Update DB, and Return - REVISED HYBRID LOGIC
         let finalBreakdownText = "";
         let calculationType = "";
-        let finalTotalCost = null; // Can be number or null
+        let finalTotalCost = null;
 
         if (failedItems.length === 0 && calculatedItems.length > 0) {
-            // Scenario 1: All ingredients calculated successfully from DB
+            // Scenario 1: All DB Success (no change needed here)
             calculationType = 'db';
-            finalTotalCost = parseFloat(totalDbCost.toFixed(2)); // Final total rounded to 2 decimals
+            finalTotalCost = parseFloat(totalDbCost.toFixed(2));
             console.log(`getCostBreakdown: DB calculation successful. Total: ${finalTotalCost}`);
-
-            finalBreakdownText = `## Geschatte Kosten Opbouw (Database):\n`;
+            finalBreakdownText = `## Geschatte Kosten Opbouw (Database):
+`;
             calculatedItems.forEach(item => {
                 finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
             });
             finalBreakdownText += `- **Totaal Geschat:** €${finalTotalCost.toFixed(2)}\n`;
 
         } else if (calculatedItems.length === 0 && failedItems.length > 0) {
-            // Scenario 2: No ingredients could be calculated from DB, fallback entirely to AI
+            // Scenario 2: All Failed - Use Full AI Breakdown (no change needed here)
             calculationType = 'ai';
             console.log(`getCostBreakdown: No ingredients calculated from DB. Falling back to full AI estimation.`);
             const aiBreakdown = await getAICostBreakdownEstimate(recipeJson);
             if (aiBreakdown) {
-                finalBreakdownText = aiBreakdown; // Use AI response directly
-                finalTotalCost = extractTotalFromAIBreakdown(finalBreakdownText); // Extract total if possible
+                finalBreakdownText = aiBreakdown;
+                finalTotalCost = extractTotalFromAIBreakdown(finalBreakdownText);
             } else {
                 finalBreakdownText = "## Geschatte Kosten Opbouw:\n- Kon kosten niet berekenen (AI fallback mislukt).\n- **Totaal Geschat:** N/A\n";
-                // Keep finalTotalCost as null
             }
 
         } else {
-            // Scenario 3: Hybrid calculation
+            // Scenario 3: Hybrid calculation - REVISED
             calculationType = 'hybrid';
-            console.log(`getCostBreakdown: Hybrid calculation needed. DB total: ${totalDbCost}`);
-            const aiFullBreakdown = await getAICostBreakdownEstimate(recipeJson); // Get AI estimate for the whole recipe
+            console.log(`getCostBreakdown: Hybrid calculation. DB total: ${totalDbCost}. Estimating ${failedItems.length} failed items via AI.`);
 
-            if (aiFullBreakdown) {
-                const aiTotalEstimate = extractTotalFromAIBreakdown(aiFullBreakdown);
+            // --- Call new helper for FAILED items ONLY ---
+            const aiEstimateForFailed = await getAIEstimateForSpecificItems(failedItems);
 
-                if (aiTotalEstimate !== null) {
-                    // Estimate cost of failed items based on difference
-                    let estimatedFailedItemsCost = aiTotalEstimate - totalDbCost;
-                    if (estimatedFailedItemsCost < 0) {
-                        console.warn(`AI total (${aiTotalEstimate}) was less than DB calculated cost (${totalDbCost}). Setting failed items cost to 0.`);
-                        estimatedFailedItemsCost = 0; // Prevent negative costs
-                    }
-                    finalTotalCost = parseFloat((totalDbCost + estimatedFailedItemsCost).toFixed(2)); // Calculate final hybrid total
-                    console.log(`getCostBreakdown: Hybrid - AI Total: ${aiTotalEstimate}, Failed Items Est: ${estimatedFailedItemsCost}, Final Total: ${finalTotalCost}`);
+            if (aiEstimateForFailed !== null) {
+                // Successfully got AI estimate for failed items
+                finalTotalCost = parseFloat((totalDbCost + aiEstimateForFailed).toFixed(2));
+                console.log(`getCostBreakdown: Hybrid - AI estimate for failed items: ${aiEstimateForFailed}, Final Total: ${finalTotalCost}`);
 
-                    // Format hybrid breakdown
-                    finalBreakdownText = `## Geschatte Kosten Opbouw (Hybride):\n`;
-                    finalBreakdownText += `### Van Database:\n`;
-                    calculatedItems.forEach(item => {
-                        finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
-                    });
-                    finalBreakdownText += `### Geschat (AI):\n`;
-                    failedItems.forEach(item => {
-                        finalBreakdownText += `- ${item.name} (${item.quantity_string}): (Niet in DB - ${item.reason || 'onbekend'})\n`;
-                    });
-                    finalBreakdownText += `\n- **Totaal Geschat (Hybride):** €${finalTotalCost.toFixed(2)}\n`;
-                    finalBreakdownText += `  *(Gebaseerd op €${totalDbCost.toFixed(2)} van DB + €${estimatedFailedItemsCost.toFixed(2)} geschat voor rest)*\n`;
-
-
-                } else {
-                    // AI ran but couldn't extract total, fallback to showing only DB items + warning
-                    console.warn("Hybrid: AI ran but couldn't extract total. Showing only DB part.");
-                    finalTotalCost = parseFloat(totalDbCost.toFixed(2)); // Best guess is the DB part
-                    finalBreakdownText = `## Geschatte Kosten Opbouw (Deels Database):\n`;
-                    calculatedItems.forEach(item => {
-                        finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
-                    });
-                    finalBreakdownText += `### Niet Berekenbaar via DB:\n`;
-                    failedItems.forEach(item => {
-                        finalBreakdownText += `- ${item.name} (${item.quantity_string}): (${item.reason || 'onbekend'})\n`;
-                    });
-                    finalBreakdownText += `\n- **Totaal (Deels Geschat):** €${finalTotalCost.toFixed(2)} (Alleen DB deel)\n`;
-                    finalBreakdownText += `- *Kon geen volledige AI schatting maken.*\n`;
-                    calculationType = 'db_partial'; // Use a specific type
-                }
-
-            } else {
-                // AI fallback failed entirely, only show DB part + warning
-                console.error("Hybrid: AI fallback failed entirely. Showing only DB part.");
-                finalTotalCost = parseFloat(totalDbCost.toFixed(2));
-                finalBreakdownText = `## Geschatte Kosten Opbouw (Deels Database):\n`;
+                // Format hybrid breakdown text
+                finalBreakdownText = `## Geschatte Kosten Opbouw (Hybride - DB + AI):
+`;
+                finalBreakdownText += `### Van Database:
+`;
                 calculatedItems.forEach(item => {
                     finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
                 });
-                finalBreakdownText += `### Niet Berekenbaar via DB:\n`;
+                finalBreakdownText += `### Geschat door AI (niet in DB):
+`;
                 failedItems.forEach(item => {
-                    finalBreakdownText += `- ${item.name} (${item.quantity_string}): (${item.reason || 'onbekend'})\n`;
+                    finalBreakdownText += `- ${item.name} (${item.quantity_string}): (Reden: ${item.reason || 'onbekend'})\n`;
                 });
-                finalBreakdownText += `\n- **Totaal (Deels Geschat):** €${finalTotalCost.toFixed(2)} (Alleen DB deel)\n`;
-                finalBreakdownText += `- *AI fallback mislukt.*\n`;
-                calculationType = 'db_partial_ai_failed';
+                finalBreakdownText += `\n- **Totaal Geschat (Hybride):** €${finalTotalCost.toFixed(2)}\n`;
+                finalBreakdownText += `  *(€${totalDbCost.toFixed(2)} van DB + €${aiEstimateForFailed.toFixed(2)} geschat voor rest)*\n`;
+
+            } else {
+                // AI estimation for specific items failed
+                console.error("Hybrid: AI estimation for specific failed items failed. Showing only DB part.");
+                finalTotalCost = parseFloat(totalDbCost.toFixed(2)); // Best guess is the DB part
+                finalBreakdownText = `## Geschatte Kosten Opbouw (Deels Database - AI Mislukt):
+`;
+                finalBreakdownText += `### Van Database:
+`;
+                calculatedItems.forEach(item => {
+                    finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
+                });
+                finalBreakdownText += `### Niet Berekenbaar via AI:
+`;
+                failedItems.forEach(item => {
+                    finalBreakdownText += `- ${item.name} (${item.quantity_string}): (Reden: ${item.reason || 'onbekend'})\n`;
+                });
+                finalBreakdownText += `\n- **Totaal (Alleen DB Deel):** €${finalTotalCost.toFixed(2)}\n`;
+                finalBreakdownText += `- *AI kon kosten voor ontbrekende items niet schatten.*\n`;
+                calculationType = 'hybrid_ai_failed'; // More specific type
             }
         }
 
@@ -358,9 +363,7 @@ exports.handler = async function (event, context) {
             console.log(`getCostBreakdown: Updating task ${taskId} with ${calculationType} breakdown.`);
             const updatePayload = {
                 cost_breakdown: finalBreakdownText,
-                // Optionally update estimated_cost if you want a numeric total stored separately
-                // estimated_cost: finalTotalCost,
-                cost_calculation_type: calculationType, // Add a column for this?
+                cost_calculation_type: calculationType,
                 updated_at: new Date().toISOString()
             };
             const { error: updateError } = await supabase
@@ -377,7 +380,6 @@ exports.handler = async function (event, context) {
         } else {
             console.warn(`getCostBreakdown: No final breakdown text generated for task ${taskId}. DB not updated.`);
         }
-
 
         // 9. Return Response
         return {
