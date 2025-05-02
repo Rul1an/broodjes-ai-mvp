@@ -45,6 +45,51 @@ function parseQuantityAndUnit(quantityString) {
 }
 // --- End Helper Function ---
 
+// --- >>> NEW: Unit Conversion Helpers <<< ---
+
+// Normalize common unit aliases
+function normalizeUnit(unit) {
+    if (!unit) return null;
+    unit = unit.toLowerCase().trim();
+    switch (unit) {
+        case 'gram': case 'gr': return 'g';
+        case 'kilogram': return 'kg';
+        case 'milliliter': return 'ml';
+        case 'liter': return 'l';
+        case 'eetlepel': case 'eetlepels': return 'el'; // Approx volume
+        case 'theelepel': case 'theelepels': return 'tl'; // Approx volume
+        case 'stuk': case 'stk': case 'plakje': case 'plakjes': return 'stuks'; // Normalize count units
+        default: return unit; // Return original if no specific normalization
+    }
+}
+
+// Attempt to convert quantity between compatible units
+function getConvertedQuantity(value, fromUnitRaw, toUnitRaw) {
+    const fromUnit = normalizeUnit(fromUnitRaw);
+    const toUnit = normalizeUnit(toUnitRaw);
+
+    if (!fromUnit || !toUnit || fromUnit === toUnit) {
+        return value; // No conversion needed or possible
+    }
+
+    // Weight Conversions
+    if (fromUnit === 'g' && toUnit === 'kg') return value / 1000;
+    if (fromUnit === 'kg' && toUnit === 'g') return value * 1000;
+
+    // Volume Conversions
+    if (fromUnit === 'ml' && toUnit === 'l') return value / 1000;
+    if (fromUnit === 'l' && toUnit === 'ml') return value * 1000;
+
+    // TODO: Add approximate volume conversions if needed (el/tl to ml/l)
+    // e.g., if (fromUnit === 'el' && toUnit === 'ml') return value * 15; // Approx 15ml/el
+
+    // If units are different but not handled by conversion rules, return NaN
+    console.warn(`Unit conversion not implemented between '${fromUnitRaw}' and '${toUnitRaw}'`);
+    return NaN;
+}
+
+// --- >>> END Unit Conversion Helpers <<< ---
+
 // --- >>> NEW: Helper function for AI Cost Breakdown Estimation <<< ---
 async function getAICostBreakdownEstimate(recipeJson) {
     if (!openai) {
@@ -237,11 +282,11 @@ exports.handler = async function (event, context) {
         const ingredientPriceMap = new Map(ingredientsData.map(ing => [ing.name.toLowerCase(), ing]));
         console.log(`getCostBreakdown: Fetched ${ingredientPriceMap.size} ingredients.`);
 
-        // 6. Calculate Breakdown - REVISED LOGIC
+        // 6. Calculate Breakdown - REVISED LOGIC with Unit Conversion
         let totalDbCost = 0;
         const calculatedItems = [];
         const failedItems = [];
-        console.log(`getCostBreakdown: Calculating breakdown for task ${taskId} (Hybrid Approach V2)...`);
+        console.log(`getCostBreakdown: Calculating breakdown for task ${taskId} (Hybrid Approach V3 - Unit Conversion)...`);
         for (const recipeIngredient of recipeJson.ingredients) {
             const ingredientName = recipeIngredient.name?.toLowerCase();
             const quantityString = recipeIngredient.quantity || '';
@@ -252,23 +297,46 @@ exports.handler = async function (event, context) {
                 failureReason = 'Missing ingredient name';
                 failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
-            const { value: quantityValue, unit: quantityUnit } = parseQuantityAndUnit(quantityString);
-            if (isNaN(quantityValue) || quantityUnit === null || ['naar smaak', 'snufje', 'beetje'].includes(quantityUnit)) {
+
+            // Parse quantity and unit from recipe
+            const { value: quantityValue, unit: quantityUnitRaw } = parseQuantityAndUnit(quantityString);
+            if (isNaN(quantityValue) || quantityUnitRaw === null || ['naar smaak', 'snufje', 'beetje'].includes(quantityUnitRaw)) {
                 failureReason = `Could not parse quantity/unit '${quantityString}'`;
                 failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
+            const quantityUnit = normalizeUnit(quantityUnitRaw); // Normalize recipe unit
+
+            // Find ingredient in DB
             const dbIngredient = ingredientPriceMap.get(ingredientName);
             if (!dbIngredient) {
                 failureReason = `Ingredient not found in DB`;
                 failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
-            const ingredientCost = quantityValue * dbIngredient.price_per_unit;
+            const dbUnit = normalizeUnit(dbIngredient.unit); // Normalize DB unit
+            const dbPricePerUnit = dbIngredient.price_per_unit;
+
+            let valueToUse = quantityValue;
+
+            // Check if units are different and need conversion
+            if (quantityUnit !== dbUnit) {
+                valueToUse = getConvertedQuantity(quantityValue, quantityUnit, dbUnit);
+                if (isNaN(valueToUse)) {
+                    failureReason = `Incompatible units or conversion failed (Recipe: '${quantityUnitRaw}', DB: '${dbIngredient.unit}')`;
+                    failedItems.push({ ...itemInfo, reason: failureReason }); continue;
+                }
+                console.log(`Converted ${quantityValue} ${quantityUnitRaw} to ${valueToUse} ${dbUnit} for ${ingredientName}`);
+            }
+
+            // Calculate cost using the (potentially converted) quantity
+            const ingredientCost = valueToUse * dbPricePerUnit;
             if (isNaN(ingredientCost)) {
-                failureReason = 'Calculated cost is NaN';
+                failureReason = 'Calculated cost is NaN (after potential conversion)';
                 failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
+
+            // Success for this ingredient
             const calculatedCost = parseFloat(ingredientCost.toFixed(4));
-            calculatedItems.push({ ...itemInfo, cost: calculatedCost, unit: quantityUnit, quantity_value: quantityValue });
+            calculatedItems.push({ ...itemInfo, cost: calculatedCost, unit: dbUnit, quantity_value: valueToUse }); // Note: unit shown is DB unit now
             totalDbCost += calculatedCost;
         }
         console.log(`getCostBreakdown: Finished calculation loop. DB calculated: ${calculatedItems.length}, Failed: ${failedItems.length}`);
