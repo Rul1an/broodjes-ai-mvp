@@ -397,12 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
             html += '</ol>';
         }
 
-        // --- Display Initial AI Cost Estimate ---
-        if (data.initialEstimatedCost !== null && !isNaN(data.initialEstimatedCost)) {
-            html += `<h3>Geschatte Kosten (AI):</h3><p>€${data.initialEstimatedCost.toFixed(2)}</p>`;
-        }
-
-        // --- >>> NEW: Add Placeholder for Breakdown <<< ---
+        // --- Add Placeholder for Breakdown ---
         html += `<div id="cost-breakdown-${data.taskId}" class="cost-breakdown-container"><p><i>Kosten opbouw wordt geladen...</i></p></div>`;
 
         recipeOutput.innerHTML = html;
@@ -437,26 +432,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     html += '</li>';
                 });
                 html += '</ul>';
+                // Display total cost below list
                 html += `<p><b>Totaal Berekend (Database): €${breakdownData.totalCalculatedCost?.toFixed(2) || 'N/A'}</b></p>`;
                 break;
 
             case 'ai':
                 html = '<h3>Geschatte Kosten Opbouw (AI):</h3>';
-                // Display raw AI text, maybe wrap in <pre> for formatting
-                html += `<pre style="white-space: pre-wrap;">${breakdownData.aiBreakdownText || 'Kon AI opbouw niet weergeven.'}</pre>`;
+                const aiText = breakdownData.aiBreakdownText || 'Kon AI opbouw niet weergeven.';
+                html += `<pre style="white-space: pre-wrap;">${aiText}</pre>`;
+                // Attempt to extract total cost from AI text and display it
+                const extractedAiCost = extractEstimatedCost(aiText);
+                if (extractedAiCost !== null) {
+                    html += `<p><b>Totaal Geschat (AI): €${extractedAiCost.toFixed(2)}</b></p>`;
+                } else {
+                    html += `<p><b>Totaal Geschat (AI): Kon niet extraheren uit tekst</b></p>`;
+                }
                 break;
 
             case 'database_failed':
-                html = '<h3>Kosten Opbouw (Database):</h3>';
+                html = '<h3>Kosten Opbouw (Database Mislukt):</h3>';
                 html += '<p style="color: orange;">Database berekening onvolledig. Poging tot AI fallback mislukt (OpenAI niet geconfigureerd?).</p>';
                 // Optionally display partial results from breakdownData.breakdown here
+                // No total cost to display reliably
                 break;
 
             case 'ai_failed':
-                html = '<h3>Kosten Opbouw (Database):</h3>';
+                html = '<h3>Kosten Opbouw (Mislukt):</h3>';
                 html += '<p style="color: red;">Database berekening onvolledig. AI fallback ook mislukt.</p>';
                 html += `<p><small>Fout: ${breakdownData.error || 'Onbekende AI fout'}</small></p>`;
                 // Optionally display partial results from breakdownData.breakdown here
+                // No total cost to display reliably
                 break;
 
             default:
@@ -601,4 +606,27 @@ function formatRecipeJsonToText(recipeJson) {
     // e.g., preparation time, cost (though cost is usually displayed separately)
 
     return text.trim(); // Return the formatted text
+}
+
+// --- Helper function to extract estimated cost from text (frontend version) ---
+function extractEstimatedCost(text) {
+    if (!text) return null;
+    // Regex tries to find "Geschatte/Estimated (totale) kosten: [€/euro/eur] X.XX"
+    const regex = /(?:geschatt(?:e|e)|estimated)\s+(?:totale)?\s*kosten\s*[:]?\s*(?:€|euro|eur)?\s*(\d+[.,]?\d*)/i;
+    const match = text.match(regex);
+    if (match && match[1]) {
+        const costString = match[1].replace(',', '.');
+        const cost = parseFloat(costString);
+        if (!isNaN(cost)) return cost;
+    }
+    // Fallback: Look for a euro amount possibly followed by "geschat" or "estimated"
+    const fallbackRegex = /(?:€|euro|eur)?\s*(\d+[.,]?\d*)\s*(?:geschat|estimated)?$/im; // Added multiline flag
+    const fallbackMatch = text.match(fallbackRegex);
+    if (fallbackMatch && fallbackMatch[1]) {
+        const costString = fallbackMatch[1].replace(',', '.');
+        const cost = parseFloat(costString);
+        if (!isNaN(cost)) return cost;
+    }
+    console.warn("Could not extract cost from text using regex.");
+    return null;
 }
