@@ -110,19 +110,47 @@ document.addEventListener('DOMContentLoaded', () => {
                     listItem.dataset.recipeId = recipe.id;
                     listItem.dataset.recipeText = recipe.generated_recipe;
 
-                    let estimatedCostHtml = '';
-                    if (recipe.estimated_total_cost !== null && recipe.estimated_total_cost !== undefined) {
-                        estimatedCostHtml = `<br><small>Geschatte Kosten: €${recipe.estimated_total_cost.toFixed(2)}</small>`;
+                    let displayTitle = recipe.idea || 'Onbekend Recept'; // Fallback title
+                    let generatedRecipeJson = null;
+                    let parseError = false;
+
+                    // Try to parse the generated recipe JSON to get the title
+                    if (recipe.generated_recipe) {
+                        try {
+                            generatedRecipeJson = JSON.parse(recipe.generated_recipe);
+                            if (generatedRecipeJson && typeof generatedRecipeJson.title === 'string' && generatedRecipeJson.title.trim() !== '') {
+                                displayTitle = generatedRecipeJson.title;
+                            } else {
+                                console.warn(`Recipe ID ${recipe.id}: Parsed JSON missing valid title.`);
+                            }
+                        } catch (e) {
+                            console.error(`Recipe ID ${recipe.id}: Failed to parse generated_recipe JSON:`, e);
+                            console.error("Invalid JSON string:", recipe.generated_recipe);
+                            parseError = true; // Flag if parsing failed
+                        }
+                    } else {
+                        console.warn(`Recipe ID ${recipe.id}: Missing generated_recipe data.`);
                     }
 
+                    let estimatedCostHtml = '';
+                    if (recipe.estimated_total_cost !== null && recipe.estimated_total_cost !== undefined) {
+                        // Format as currency (e.g., €1.50)
+                        const cost = parseFloat(recipe.estimated_total_cost);
+                        estimatedCostHtml = `<br><small>Geschatte Kosten: €${isNaN(cost) ? 'N/A' : cost.toFixed(2)}</small>`;
+                    }
+
+                    const recipeDetailsHtml = parseError
+                        ? `<pre class="original-recipe-text" style="color: red;">Kon recept niet lezen (ongeldig formaat).</pre><pre>${recipe.generated_recipe || 'Geen data'}</pre>`
+                        : `<pre class="original-recipe-text">${formatRecipeJsonToText(generatedRecipeJson) || 'Kon recept niet formatteren.'}</pre>`;
+
                     listItem.innerHTML = `
-                        <b>${recipe.idea || 'Onbekend Idee'}</b>
+                        <b>${displayTitle}</b>
                         <br>
-                        <small>Opgeslagen op: ${new Date(recipe.created_at).toLocaleString()}</small>
+                        <small>Opgeslagen op: ${new Date(recipe.created_at).toLocaleString('nl-NL')}</small>
                         ${estimatedCostHtml}
                         <details>
                             <summary>Bekijk/Verfijn Recept</summary>
-                            <pre class="original-recipe-text">${recipe.generated_recipe || 'Geen recept data'}</pre>
+                            ${recipeDetailsHtml}
                             <div class="refine-section" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
                                 <input type="text" class="refine-input" placeholder="Vraag om verfijning (bv. maak het pittiger)" style="width: 70%; margin-right: 5px;">
                                 <button class="refine-btn">Verfijn Recept</button>
@@ -302,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(refineRecipeApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ recipeId, refinePrompt, originalRecipe: originalRecipeText })
+                body: JSON.stringify({ recipeId, refinementRequest: refinePrompt, originalRecipe: originalRecipeText })
             });
 
             if (!response.ok) {
@@ -430,3 +458,39 @@ document.addEventListener('DOMContentLoaded', () => {
     setActiveView('view-generator'); // Start on the generator view
     // Load ingredients in the background? Or handled by view switch
 });
+
+// --- Helper Function to Format JSON Recipe to Text ---
+function formatRecipeJsonToText(recipeJson) {
+    if (!recipeJson || typeof recipeJson !== 'object') {
+        return "Kon recept niet formatteren (ongeldige data).";
+    }
+
+    let text = ``;
+    if (recipeJson.title) {
+        text += `# ${recipeJson.title}\n\n`;
+    }
+    if (recipeJson.description) {
+        text += `${recipeJson.description}\n\n`;
+    }
+
+    if (recipeJson.ingredients && Array.isArray(recipeJson.ingredients) && recipeJson.ingredients.length > 0) {
+        text += `## Ingrediënten:\n`;
+        recipeJson.ingredients.forEach(ing => {
+            text += `- ${ing.quantity || ''} ${ing.name || 'Onbekend'}\n`;
+        });
+        text += `\n`;
+    }
+
+    if (recipeJson.instructions && Array.isArray(recipeJson.instructions) && recipeJson.instructions.length > 0) {
+        text += `## Instructies:\n`;
+        recipeJson.instructions.forEach((inst, index) => {
+            text += `${index + 1}. ${inst}\n`;
+        });
+        text += `\n`;
+    }
+
+    // Add other fields if they exist in the JSON and you want to display them
+    // e.g., preparation time, cost (though cost is usually displayed separately)
+
+    return text.trim(); // Return the formatted text
+}
