@@ -1,32 +1,8 @@
 const { getServiceClient } = require('./lib/supabaseClient');
 const { getOpenAIClient } = require('./lib/openaiClient');
-// Potentially require costUtils if extractEstimatedCost is moved there later
-// const { extractEstimatedCost } = require('./lib/costUtils');
+const { extractEstimatedCost } = require('./lib/costUtils');
 
 // Keep local helper function for now, unless moved to costUtils
-function extractEstimatedCost(text) {
-    if (!text) return null;
-    // Regex tries to find "Geschatte/Estimated (totale) kosten: [€/euro/eur] X.XX"
-    // Made the first part slightly more robust
-    const regex = /(?:geschatt(?:e|e)|estimated)\s+(?:totale)?\s*kosten\s*[:]?\s*(?:€|euro|eur)?\s*(\d+[.,]?\d*)/i;
-    const match = text.match(regex);
-    if (match && match[1]) {
-        const costString = match[1].replace(',', '.');
-        const cost = parseFloat(costString);
-        if (!isNaN(cost)) return cost;
-    }
-    // Fallback: Look for a euro amount possibly followed by "geschat" or "estimated"
-    // This is less reliable and might need adjustment based on actual AI output variations.
-    const fallbackRegex = /(?:€|euro|eur)?\s*(\d+[.,]?\d*)\s*(?:geschat|estimated)?$/im; // Added multiline flag
-    const fallbackMatch = text.match(fallbackRegex);
-    if (fallbackMatch && fallbackMatch[1]) {
-        const costString = fallbackMatch[1].replace(',', '.');
-        const cost = parseFloat(costString);
-        if (!isNaN(cost)) return cost;
-    }
-    console.log("Could not extract cost from refined text using regex."); // Added log
-    return null;
-}
 
 exports.handler = async function (event, context) {
     if (event.httpMethod !== 'POST') {
