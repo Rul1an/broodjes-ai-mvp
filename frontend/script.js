@@ -344,7 +344,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            refinedOutput.textContent = data.refinedRecipe;
+            console.log('[Refine Recipe] API Response Data:', data); // Log the whole response
+            console.log('[Refine Recipe] Refined text from data:', data.recipe); // Log the specific field
+
+            // --- This is the crucial line ---
+            console.log('[Refine Recipe] Attempting to set refinedOutput.textContent'); // Log before setting
+            refinedOutput.textContent = data.recipe; // <<< It should be data.recipe based on refineRecipe.js
 
         } catch (error) {
             console.error('Error refining recipe:', error);
