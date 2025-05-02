@@ -15,16 +15,15 @@ The application is built using a combination of a static frontend, serverless fu
 *   **Backend - Netlify Functions (`netlify/functions/`):**
     *   `/api/getRecipes`: Fetches saved recipe data (original recipe JSON + cost breakdown text) from the Supabase `async_tasks` table. Uses Supabase Anon Key (potential future change needed if RLS restricts).
     *   `/api/getCostBreakdown`: Calculates or estimates a detailed cost breakdown for a specific recipe task (`task_id`).
-        *   Attempts to calculate costs for each ingredient using prices from the Supabase `ingredients` table.
-        *   If **all** ingredients are found and costed successfully from the DB, it returns a breakdown based solely on DB prices (`calculationType: 'db'`).
-        *   If **no** ingredients can be costed from the DB, it falls back to OpenAI (`gpt-4o-mini`) for an estimate of the entire recipe (`calculationType: 'ai'`).
-        *   If **some** ingredients are found in the DB and others are not (or have parsing/unit issues), it performs a **hybrid** calculation:
-            *   Gets a full recipe cost estimate from OpenAI (`gpt-4o-mini`).
-            *   Extracts the total cost from the AI estimate.
-            *   Calculates the cost of unknown/failed items by subtracting the known DB costs from the AI's total estimate.
-            *   Combines the known DB costs and the estimated cost for failed items into a final total.
-            *   Formats a breakdown indicating which items were costed via DB and which were part of the AI estimate (`calculationType: 'hybrid'`).
-            *   Includes fallback formatting if the AI estimate or total extraction fails (`calculationType: 'db_partial'` or `'db_partial_ai_failed'`).
+        *   Attempts to calculate costs for each ingredient using prices from the Supabase `ingredients` table (`calculatedItems`). Identifies items that cannot be costed from DB (`failedItems`).
+        *   If **all** ingredients are costed successfully from the DB (`failedItems` is empty), it returns a breakdown based solely on DB prices (`calculationType: 'db'`).
+        *   If **no** ingredients can be costed from the DB (`calculatedItems` is empty), it falls back to OpenAI (`gpt-4o-mini`) for an estimate of the **entire** recipe using the `getAICostBreakdownEstimate` helper (`calculationType: 'ai'`).
+        *   If **some** ingredients are found in the DB and others are not, it performs a **precise hybrid** calculation:
+            *   Calculates the total cost of known items from the DB (`totalDbCost`).
+            *   Calls a separate helper (`getAIEstimateForSpecificItems`) that asks OpenAI (`gpt-4o-mini`) to estimate the combined cost **only** for the `failedItems`.
+            *   Combines the `totalDbCost` and the AI estimate for failed items (`aiEstimateForFailed`) to get the `finalTotalCost`.
+            *   Formats a breakdown indicating which items were costed via DB and noting the failed items were estimated by AI, showing the final hybrid total (`calculationType: 'hybrid'`).
+            *   Includes fallback formatting if the AI estimate for specific items fails (`calculationType: 'hybrid_ai_failed'`).
         *   Saves the final generated breakdown text and the `calculationType` to `async_tasks`.
         *   Requires Supabase Service Role Key for DB writes.
     *   `/api/refineRecipe`: Refines an existing recipe based on user input.
