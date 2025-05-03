@@ -1,4 +1,4 @@
-const { createClient } = require('@supabase/supabase-js');
+const { getServiceClient } = require('./lib/supabaseClient');
 
 exports.handler = async function (event, context) {
   // Only allow GET requests
@@ -10,20 +10,13 @@ exports.handler = async function (event, context) {
   }
 
   try {
-    // Initialize Supabase client
-    // Ensure SUPABASE_URL and SUPABASE_ANON_KEY are set in Netlify environment variables
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+    // Initialize Supabase client using the shared helper (uses Service Role Key)
+    const supabase = getServiceClient();
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('Supabase URL or Anon Key missing');
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'Server configuration error' })
-      };
+    if (!supabase) {
+      console.error('getRecipes: Supabase client failed to initialize.');
+      return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error (DB)' }) };
     }
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
     // Fetch COMPLETED TASKS, including the recipe JSON and estimated cost
     const { data: tasks, error } = await supabase

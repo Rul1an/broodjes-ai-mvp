@@ -19,7 +19,7 @@ The application is built using a combination of a static frontend, serverless fu
         *   Saves the recipe JSON, idea, status ('completed') to the `async_tasks` table.
         *   Uses Supabase **Service Role Key** for database write.
         *   Returns the generated recipe object and the new `taskId`.
-    *   `/api/getRecipes`: Fetches saved recipe data (original recipe JSON + cost breakdown text) from the Supabase `async_tasks` table. Uses Supabase Anon Key (potential future change needed if RLS restricts).
+    *   `/api/getRecipes`: Fetches saved recipe data (original recipe JSON + cost breakdown text) from the Supabase `async_tasks` table. Uses Supabase **Service Role Key** (standardized).
     *   `/api/getCostBreakdown`: Calculates or estimates a detailed cost breakdown for a specific recipe task (`task_id`).
         *   Attempts to calculate costs for each ingredient using prices from the Supabase `ingredients` table.
         *   It **normalizes units** (e.g., 'gram' -> 'g', 'plakjes' -> 'stuks') from both the recipe and the database.
@@ -120,15 +120,16 @@ Ensure the following are configured correctly:
     *   `OPENAI_API_KEY`
     *   `SUPABASE_URL`
     *   `SERVICE_ROLE_KEY` (Supabase Service Role Key)
-    *   `SUPABASE_ANON_KEY` (Potentially needed by `/api/getRecipes`?)
+    *   `SUPABASE_ANON_KEY` (No longer directly used by backend functions)
 *   ~~**GCP (GCF Deployment):**~~ (Removed)
 
 ## 4. Potential Improvements / Areas for Review
 
 *   **Consolidate Platform:** (Done) Migrated `generateRecipe` from GCF to Netlify Functions.
 *   **Eliminate Redundancy:** (Done) Removed `recipes` table, `calculateCost` GCF, and Cloud Scheduler Job.
-*   **Standardize Key Usage:** Review if `/api/getRecipes` should use the Service Role Key instead of the Anon Key, especially if Row Level Security might be implemented later.
-*   **Share Helper Code:** Create a shared `lib/` or `utils/` directory within `netlify/functions/` to centralize common helpers like `parseQuantityAndUnit`, `normalizeUnit`, `getConvertedQuantity`, etc., and import them where needed to avoid duplication.
+*   **Standardize Key Usage:** (Done) Reviewed `/api/getRecipes` and updated it to use the Service Role Key for consistency.
+*   **Share Helper Code:** (Grotendeels voltooid) Create a shared `lib/` or `utils/` directory within `netlify/functions/` to centralize common helpers like `parseQuantityAndUnit`, `normalizeUnit`, `getConvertedQuantity`, etc., and import them where needed to avoid duplication. (Helpers zijn verplaatst naar `lib/costUtils.js` en worden geïmporteerd in `getCostBreakdown.js`.)
 *   **Optimize AI Calls & Costs:** Review if the default model for generation/refinement (`gpt-4o-mini`?) is optimal. Consider fine-tuning prompts or exploring model choices further.
 *   **Enhance Error Handling & Logging:** Implement more consistent error response formats across API functions and ensure logs capture sufficient context for debugging.
 *   **Refine Unit Conversion:** Expand the `getConvertedQuantity` helper with more conversions (e.g., approximate volume units like 'el'/'tl' to 'ml') if needed based on common recipe formats.
+*   **Improve Code Structure:** (Ongoing) Refactored `generate.js` (<300 lines) and `refineRecipe.js` (prompt extracted to `promptTemplates.js`) to improve modularity and maintainability.

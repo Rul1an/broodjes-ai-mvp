@@ -371,6 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Function to Display Generated/Fetched Recipe in the Main Output Area ---
     const displayRecipe = (data) => {
+        console.log('Displaying recipe for task:', data?.taskId);
         if (!data || typeof data !== 'object' || !data.recipe || typeof data.recipe !== 'object') {
             recipeOutput.innerHTML = '<p>Fout: Ongeldige receptdata ontvangen.</p>';
             return;
