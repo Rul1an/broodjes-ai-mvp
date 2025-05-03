@@ -1,5 +1,3 @@
-const { extractEstimatedCost } = require('./lib/costUtils');
-
 // --- Quantity Parsing ---
 function parseQuantityAndUnit(quantityString) {
     if (!quantityString || typeof quantityString !== 'string') {
@@ -352,7 +350,6 @@ module.exports = {
     getAICostBreakdownEstimate,
     getAIEstimateForSpecificItems,
     extractTotalFromAIBreakdown,
-    extractEstimatedCost,
     extractAICostEstimate,
     extractIngredientsJSON,
     calculateCostFromJSON
