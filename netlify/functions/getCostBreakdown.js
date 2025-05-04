@@ -12,40 +12,72 @@ const {
 exports.handler = async function (event, context) {
     // 1. Validate Request
     if (event.httpMethod !== 'GET') {
-        return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+        // Standard error for Method Not Allowed
+        return {
+            statusCode: 405,
+            body: JSON.stringify({ error: { message: 'Method Not Allowed', code: 'METHOD_NOT_ALLOWED' } }),
+            headers: { 'Content-Type': 'application/json' }
+        };
     }
     const taskId = event.queryStringParameters?.taskId;
     if (!taskId) {
-        return { statusCode: 400, body: JSON.stringify({ error: 'Missing required query parameter: taskId' }) };
+        // Standard error for missing taskId
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: { message: 'Missing required query parameter: taskId', code: 'VALIDATION_ERROR', details: 'Field: taskId' } }),
+            headers: { 'Content-Type': 'application/json' }
+        };
     }
 
-    // 2. Initialize Clients using shared modules
+    // 2. Initialize Clients
     const supabase = getServiceClient();
-    const openai = getOpenAIClient(); // Initialize OpenAI client (needed for potential fallbacks)
+    const openai = getOpenAIClient();
 
-    // Check if clients initialized properly
     if (!supabase) {
-        // Supabase client logs the error internally
-        return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error (DB)' }) };
+        console.error('getCostBreakdown: Failed to initialize Supabase service client.');
+        // Standard error for config error
+        return {
+            statusCode: 500,
+            body: JSON.stringify({
+                error: {
+                    message: 'Server configuration error',
+                    code: 'SERVER_CONFIG_ERROR',
+                    details: 'Supabase client could not be initialized.'
+                }
+            }),
+            headers: { 'Content-Type': 'application/json' }
+        };
     }
-    // Note: We might proceed even if OpenAI fails, but AI features will be disabled.
-    // The costUtils helpers already check if openai client is available.
+    // Note: OpenAI client check happens implicitly in costUtils if needed
 
+    // --- ADDED try...catch around main logic ---
     try {
         // 3. Fetch the specific task
         console.log(`getCostBreakdown: Fetching task ${taskId}`);
         const { data: taskData, error: taskError } = await supabase
             .from('async_tasks')
-            .select('recipe') // Only need the recipe JSON string
+            .select('recipe')
             .eq('task_id', taskId)
-            .maybeSingle(); // Expect 0 or 1 result
+            .maybeSingle();
 
         if (taskError) {
             console.error(`getCostBreakdown: Error fetching task ${taskId}:`, taskError);
+            // Throw specific error for the catch block
             throw new Error(`Database error fetching task: ${taskError.message}`);
         }
         if (!taskData || !taskData.recipe) {
-            return { statusCode: 404, body: JSON.stringify({ error: `Task ${taskId} not found or has no recipe data.` }) };
+            // Standard error for not found
+            return {
+                statusCode: 404,
+                body: JSON.stringify({
+                    error: {
+                        message: `Task ${taskId} not found or has no recipe data.`,
+                        code: 'NOT_FOUND',
+                        details: `Task ID: ${taskId}`
+                    }
+                }),
+                headers: { 'Content-Type': 'application/json' }
+            };
         }
 
         // 4. Parse Recipe JSON
@@ -57,7 +89,18 @@ exports.handler = async function (event, context) {
             }
         } catch (parseError) {
             console.error(`getCostBreakdown: Failed to parse recipe JSON for task ${taskId}:`, parseError);
-            return { statusCode: 500, body: JSON.stringify({ error: 'Failed to parse recipe data for cost breakdown.' }) };
+            // Standard error for parse error
+            return {
+                statusCode: 500, // Treat as server error as the stored data might be corrupt
+                body: JSON.stringify({
+                    error: {
+                        message: 'Failed to parse recipe data for cost breakdown.',
+                        code: 'PARSE_ERROR',
+                        details: parseError.message
+                    }
+                }),
+                headers: { 'Content-Type': 'application/json' }
+            };
         }
 
         // 5. Fetch all ingredients prices
@@ -68,6 +111,7 @@ exports.handler = async function (event, context) {
 
         if (ingredientsError) {
             console.error('getCostBreakdown: Error fetching ingredients:', ingredientsError);
+            // Throw specific error for the catch block
             throw new Error(`Database error fetching ingredients: ${ingredientsError.message}`);
         }
         const ingredientPriceMap = new Map(ingredientsData.map(ing => [ing.name.toLowerCase(), ing]));
@@ -248,47 +292,37 @@ exports.handler = async function (event, context) {
             }),
         };
 
+        // --- ADDED Catch Block ---
     } catch (error) {
-        // Verbeterde Logging
-        const errorTimestamp = new Date().toISOString();
-        console.error(`[${errorTimestamp}] Error in getCostBreakdown handler for task ${taskId}:`, error.message);
-        console.error(`[${errorTimestamp}] Full Error:`, error); // Log full error object
+        console.error('Error in getCostBreakdown function handler:', error.message);
 
-        // Gestandaardiseerde Error Response
+        // Standard error structure for caught errors
         let statusCode = 500;
         let errorCode = "INTERNAL_ERROR";
         let userMessage = 'Failed to calculate cost breakdown due to an internal server error.';
 
-        // Specifieke error types
-        if (error.message?.includes('Database error') || error.message?.includes('Supabase')) {
+        if (error.message?.startsWith('Database error')) {
             errorCode = "DATABASE_ERROR";
-            userMessage = 'A database error occurred while fetching data.';
-        } else if (error.message?.includes('Failed to parse recipe JSON')) {
-            errorCode = "PARSE_ERROR";
-            userMessage = 'Could not read the recipe data needed for calculation.';
-            statusCode = 500; // Internal error, likely data corruption
-        } else if (error.message?.includes('OpenAI') || error.message?.includes('AI')) {
-            // This might occur during AI fallback helpers called within the try block
-            statusCode = 502; // Bad Gateway for external service failure
-            errorCode = "AI_FALLBACK_ERROR";
-            userMessage = 'Error communicating with AI service during cost estimation fallback.';
+            userMessage = 'A database error occurred during cost breakdown calculation.';
+        } else if (error.message?.includes('not found')) { // Should be caught earlier, but as fallback
+            statusCode = 404;
+            errorCode = "NOT_FOUND";
+            userMessage = `Task with ID ${taskId} not found.`;
         }
-        // Add more specific checks if needed based on potential error sources
+        // Add more specific checks if needed
 
         return {
             statusCode: statusCode,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            },
             body: JSON.stringify({
                 error: {
                     message: userMessage,
                     code: errorCode,
-                    details: error.message // Include original message as detail
-                },
-                taskId: taskId // Include taskId for context
+                    details: error.message,
+                    taskId: taskId // Include taskId for context
+                }
             }),
+            headers: { 'Content-Type': 'application/json' }
         };
     }
+    // --- END try...catch ---
 };

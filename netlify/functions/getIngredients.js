@@ -5,7 +5,12 @@ const { getServiceClient } = require('./lib/supabaseClient');
 
 exports.handler = async function (event, context) {
     if (event.httpMethod !== 'GET') {
-        return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+        // Consistent error structure for Method Not Allowed
+        return {
+            statusCode: 405,
+            body: JSON.stringify({ error: { message: 'Method Not Allowed', code: 'METHOD_NOT_ALLOWED' } }),
+            headers: { 'Content-Type': 'application/json' }
+        };
     }
 
     try {
@@ -15,9 +20,16 @@ exports.handler = async function (event, context) {
         // Check if the client was initialized successfully
         if (!supabase) {
             console.error('Failed to initialize Supabase service client.');
+            // Standard error structure for config error
             return {
                 statusCode: 500,
-                body: JSON.stringify({ error: 'Server configuration error', details: 'Supabase client could not be initialized.' }),
+                body: JSON.stringify({
+                    error: {
+                        message: 'Server configuration error',
+                        code: 'SERVER_CONFIG_ERROR',
+                        details: 'Supabase client could not be initialized.'
+                    }
+                }),
                 headers: { 'Content-Type': 'application/json' }
             };
         }
@@ -30,7 +42,8 @@ exports.handler = async function (event, context) {
 
         if (error) {
             console.error('Error fetching ingredients:', error);
-            throw error; // Re-throw the error to be caught by the outer catch block
+            // Throw a specific error type for the catch block to identify DB errors
+            throw new Error(`Database error: ${error.message}`);
         }
 
         return {
@@ -41,12 +54,28 @@ exports.handler = async function (event, context) {
             headers: { 'Content-Type': 'application/json' }
         };
     } catch (error) {
-        // Log the caught error for debugging
         console.error('Error in getIngredients function execution:', error);
-        // Return a more informative error response
+
+        // Standard error structure for caught errors
+        let statusCode = 500;
+        let errorCode = "INTERNAL_ERROR";
+        let userMessage = 'Failed to fetch ingredients due to an internal server error.';
+
+        if (error.message?.startsWith('Database error:')) {
+            errorCode = "DATABASE_ERROR";
+            userMessage = 'A database error occurred while fetching ingredients.';
+        }
+        // Add more specific checks if needed
+
         return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'Failed to fetch ingredients', details: error.message || 'Unknown error' }),
+            statusCode: statusCode,
+            body: JSON.stringify({
+                error: {
+                    message: userMessage,
+                    code: errorCode,
+                    details: error.message // Include original message as detail
+                }
+            }),
             headers: { 'Content-Type': 'application/json' }
         };
     }

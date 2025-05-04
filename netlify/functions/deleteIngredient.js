@@ -3,42 +3,48 @@ const { getServiceClient } = require('./lib/supabaseClient');
 
 exports.handler = async function (event, context) {
     if (event.httpMethod !== 'DELETE') {
-        return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+        // Standard error for Method Not Allowed
+        return {
+            statusCode: 405,
+            body: JSON.stringify({ error: { message: 'Method Not Allowed', code: 'METHOD_NOT_ALLOWED' } }),
+            headers: { 'Content-Type': 'application/json' }
+        };
     }
+
+    let ingredientIdForError = null; // Track ID for error context
 
     try {
         // --- Input Validation ---
-        const idParam = event.queryStringParameters?.id; // Use optional chaining
+        const idParam = event.queryStringParameters?.id;
 
         if (!idParam) {
-            return { statusCode: 400, body: JSON.stringify({ error: 'Missing required query parameter "id".' }) };
+            // Standard error for missing ID
+            return { statusCode: 400, body: JSON.stringify({ error: { message: 'Missing required query parameter "id".', code: 'VALIDATION_ERROR', details: 'Field: id' } }), headers: { 'Content-Type': 'application/json' } };
         }
 
-        // Validate if id is a positive integer
         const id = parseInt(idParam, 10);
-        if (isNaN(id) || id <= 0 || String(id) !== idParam) { // Ensure it's a clean integer parse
-            return { statusCode: 400, body: JSON.stringify({ error: 'Query parameter "id" must be a positive integer.' }) };
+        if (isNaN(id) || id <= 0 || String(id) !== idParam) {
+            // Standard error for invalid ID
+            return { statusCode: 400, body: JSON.stringify({ error: { message: 'Query parameter "id" must be a positive integer.', code: 'VALIDATION_ERROR', details: 'Field: id' } }), headers: { 'Content-Type': 'application/json' } };
         }
+        ingredientIdForError = id; // Store valid ID
         // ----------------------
 
-        // --- Supabase Client Setup ---
-        /*
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-
-        if (!supabaseUrl || !supabaseAnonKey) {
-            console.error('Supabase URL or Anon Key missing in deleteIngredient function');
-            return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error' }) };
-        }
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
-        */
-        // ---------------------------
-
-        // Get the Supabase client using the shared factory (Service Role Key)
         const supabase = getServiceClient();
         if (!supabase) {
             console.error('deleteIngredient: Failed to initialize Supabase service client.');
-            return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error (DB)' }) };
+            // Standard error for config error
+            return {
+                statusCode: 500,
+                body: JSON.stringify({
+                    error: {
+                        message: 'Server configuration error',
+                        code: 'SERVER_CONFIG_ERROR',
+                        details: 'Supabase client could not be initialized.'
+                    }
+                }),
+                headers: { 'Content-Type': 'application/json' }
+            };
         }
 
         // --- Database Operation ---
@@ -51,27 +57,41 @@ exports.handler = async function (event, context) {
         if (dbError) {
             console.error('Supabase error deleting ingredient:', dbError);
             // Throw specific error for the catch block
-            throw new Error(`Supabase DB error: ${dbError.message}`);
+            throw new Error(`Database error: ${dbError.message}`);
         }
 
-        // Supabase delete doesn't easily confirm if a row was deleted vs not found.
-        // Returning 204 implies success regardless.
+        // Success response (no change needed)
         console.log(`Attempted to delete ingredient with ID: ${id}`);
-
         return {
-            statusCode: 204, // No Content (successful deletion or row not found)
+            statusCode: 204, // No Content
             body: '',
         };
 
     } catch (error) {
         console.error('Error in deleteIngredient function handler:', error.message);
-        const clientErrorMessage = error.message.startsWith('Supabase DB error:')
-            ? error.message // Pass specific DB errors
-            : 'Failed to delete ingredient due to an internal server error.';
+
+        // Standard error structure for caught errors
+        let statusCode = 500;
+        let errorCode = "INTERNAL_ERROR";
+        let userMessage = 'Failed to delete ingredient due to an internal server error.';
+
+        if (error.message?.startsWith('Database error:')) {
+            errorCode = "DATABASE_ERROR";
+            userMessage = 'A database error occurred while deleting the ingredient.';
+        }
+        // Add more specific checks if needed
 
         return {
-            statusCode: 500, // Keep 500 for unexpected errors
-            body: JSON.stringify({ error: clientErrorMessage })
+            statusCode: statusCode,
+            body: JSON.stringify({
+                error: {
+                    message: userMessage,
+                    code: errorCode,
+                    details: error.message,
+                    ingredientId: ingredientIdForError // Include ID if available
+                }
+            }),
+            headers: { 'Content-Type': 'application/json' }
         };
     }
 };

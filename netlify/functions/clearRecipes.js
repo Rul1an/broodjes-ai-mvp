@@ -6,7 +6,12 @@ const { getServiceClient } = require('./lib/supabaseClient');
 exports.handler = async function (event, context) {
     // IMPORTANT: Use POST or DELETE for destructive actions, not GET
     if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+        // Standard error for Method Not Allowed
+        return {
+            statusCode: 405,
+            body: JSON.stringify({ error: { message: 'Method Not Allowed', code: 'METHOD_NOT_ALLOWED' } }),
+            headers: { 'Content-Type': 'application/json' }
+        };
     }
 
     // Add authentication/authorization here in a real application
@@ -30,7 +35,18 @@ exports.handler = async function (event, context) {
         const supabase = getServiceClient();
         if (!supabase) {
             console.error('clearRecipes: Failed to initialize Supabase service client.');
-            return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error (DB)' }) };
+            // Standard error for config error
+            return {
+                statusCode: 500,
+                body: JSON.stringify({
+                    error: {
+                        message: 'Server configuration error',
+                        code: 'SERVER_CONFIG_ERROR',
+                        details: 'Supabase client could not be initialized.'
+                    }
+                }),
+                headers: { 'Content-Type': 'application/json' }
+            };
         }
 
         // Delete all rows from the async_tasks table.
@@ -43,19 +59,40 @@ exports.handler = async function (event, context) {
 
         if (error) {
             console.error('Error clearing async_tasks:', error);
-            throw new Error(`Database error: ${error.message}`); // Throw a more specific error
+            // Throw specific error for the catch block
+            throw new Error(`Database error: ${error.message}`);
         }
 
         console.log('Successfully cleared async_tasks table.');
         return {
             statusCode: 200, // OK or 204 No Content could also be used
             body: JSON.stringify({ message: 'All tasks cleared successfully.' }), // Updated message
+            headers: { 'Content-Type': 'application/json' }
         };
     } catch (error) {
         console.error('Error in clearRecipes function:', error.message);
-        const clientErrorMessage = error.message.startsWith('Database error:')
-            ? error.message
-            : 'Failed to clear tasks due to an internal server error.';
-        return { statusCode: 500, body: JSON.stringify({ error: clientErrorMessage }) }; // Use more specific message
+
+        // Standard error structure for caught errors
+        let statusCode = 500;
+        let errorCode = "INTERNAL_ERROR";
+        let userMessage = 'Failed to clear tasks due to an internal server error.';
+
+        if (error.message?.startsWith('Database error:')) {
+            errorCode = "DATABASE_ERROR";
+            userMessage = 'A database error occurred while clearing tasks.';
+        }
+        // Add more specific checks if needed
+
+        return {
+            statusCode: statusCode,
+            body: JSON.stringify({
+                error: {
+                    message: userMessage,
+                    code: errorCode,
+                    details: error.message
+                }
+            }),
+            headers: { 'Content-Type': 'application/json' }
+        };
     }
 };
