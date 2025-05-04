@@ -103,11 +103,12 @@ exports.handler = async function (event, context) {
         const newIngredient = data;
 
         // --- Trigger GCF Image Generation Asynchronously ---
-        if (process.env.GCF_IMAGE_GENERATION_URL) {
+        if (process.env.GCF_IMAGE_GENERATION_URL && process.env.URL) {
             try {
-                console.log(`Triggering async image generation for new ingredient: ${newIngredient.id}`);
+                const triggerUrl = new URL('/api/triggerIngredientImageGeneration', process.env.URL).toString();
+                console.log(`Triggering async image generation for new ingredient: ${newIngredient.id} via ${triggerUrl}`);
                 // Fire and forget - don't await
-                fetch('/api/triggerIngredientImageGeneration', { // Assuming relative path works from function to function
+                fetch(triggerUrl, { // Use absolute URL
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ingredient_id: newIngredient.id })
@@ -119,7 +120,7 @@ exports.handler = async function (event, context) {
                 console.error(`Error initiating trigger for image generation (ingredient ${newIngredient.id}):`, e);
             }
         } else {
-            console.warn('GCF_IMAGE_GENERATION_URL not set, skipping image generation trigger.');
+            console.warn('GCF_IMAGE_GENERATION_URL or Netlify URL env var not set, skipping image generation trigger.');
         }
         // --- End Trigger ---
 
