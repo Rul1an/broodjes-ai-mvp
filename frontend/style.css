@@ -139,22 +139,56 @@ ul#recepten-lijst {
     padding: 0;
 }
 
-ul#recepten-lijst li {
+/* Styling for Saved Recipes List Items */
+#recepten-lijst li {
     background-color: #f9f9f9;
-    border: 1px solid #eee;
     padding: 15px;
-    margin-bottom: 10px;
-    border-radius: 4px;
+    margin-bottom: 15px;
+    border: 1px solid #eee;
+    border-radius: 5px;
 }
 
-ul#recepten-lijst li details {
+#recepten-lijst li details {
     margin-top: 10px;
 }
 
-ul#recepten-lijst li details summary {
+#recepten-lijst li summary {
     cursor: pointer;
     font-weight: bold;
     color: #007bff;
+}
+
+.original-recipe-content,
+.cost-breakdown-section {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-top: 5px;
+    border-radius: 4px;
+    max-height: 300px;
+    /* Limit height */
+    overflow-y: auto;
+    /* Add scroll if content exceeds max-height */
+}
+
+/* Adjust headings within details */
+#recepten-lijst li details h4 {
+    margin-bottom: 5px;
+    color: #555;
+}
+
+/* Ensure refine section has some space */
+.refine-section {
+    margin-top: 15px !important;
+    /* Override inline style if needed */
+    padding-top: 15px !important;
+    /* Override inline style if needed */
+}
+
+.refined-recipe-output {
+    white-space: pre-wrap;
+    /* Keep formatting */
+    word-wrap: break-word;
 }
 
 /* Ingredient Table Styling */

@@ -119,52 +119,58 @@ export async function loadRecipes() {
 
         if (data.recipes && data.recipes.length > 0) {
             data.recipes.forEach(recipe => {
+                console.log("Processing recipe:", recipe); // Log the whole recipe object from API
                 const listItem = document.createElement('li');
-                listItem.dataset.recipeId = recipe.task_id; // Corrected key
-                // Store original JSON safely if needed, careful with large data
-                // listItem.dataset.recipeJson = recipe.recipe;
+                listItem.dataset.recipeId = recipe.id; // Use mapped id
 
-                let displayTitle = recipe.prompt || 'Onbekend Recept';
+                let displayTitle = recipe.idea || 'Onbekend Recept';
                 let parsedRecipe = null;
                 try {
-                    if (recipe.recipe && typeof recipe.recipe === 'string') {
-                        parsedRecipe = JSON.parse(recipe.recipe);
-                    } else if (typeof recipe.recipe === 'object') {
-                        parsedRecipe = recipe.recipe; // Already an object
+                    // Log the raw recipe string before parsing
+                    console.log(`Recipe ID ${recipe.id} - Raw recipe JSON string:`, recipe.generated_recipe);
+                    if (recipe.generated_recipe && typeof recipe.generated_recipe === 'string') {
+                        parsedRecipe = JSON.parse(recipe.generated_recipe);
+                    } else if (typeof recipe.generated_recipe === 'object') {
+                        parsedRecipe = recipe.generated_recipe; // Already an object?
                     }
                     if (parsedRecipe && parsedRecipe.title) {
                         displayTitle = parsedRecipe.title;
                     }
                 } catch (e) {
-                    console.warn(`Recipe ID ${recipe.task_id}: Could not parse recipe JSON for title.`, e);
-                    // displayTitle remains recipe.prompt or default
+                    console.warn(`Recipe ID ${recipe.id}: Could not parse recipe JSON for title.`, e);
                 }
 
-                const formattedRecipeText = parsedRecipe ? utils.formatRecipeJsonToText(parsedRecipe) : (recipe.recipe || 'Geen recept data.');
-                const costBreakdownText = recipe.cost_breakdown || 'Geen kosten opbouw beschikbaar.';
+                const formattedRecipeText = parsedRecipe ? utils.formatRecipeJsonToText(parsedRecipe) : 'Geen receptgegevens.';
+                console.log(`Recipe ID ${recipe.id} - Formatted recipe text:`, formattedRecipeText); // Log formatted text
 
-                // Parse cost breakdown text with marked
-                const parsedCostBreakdownHtml = costBreakdownText ? marked.parse(costBreakdownText) : '<i>Kosten niet beschikbaar.</i>';
+                const costBreakdownText = recipe.cost_breakdown;
+                console.log(`Recipe ID ${recipe.id} - Raw cost breakdown text:`, costBreakdownText); // Log cost breakdown text
+
+                // Parse content with marked
+                const parsedRecipeHtml = formattedRecipeText ? marked.parse(formattedRecipeText) : '<i>Geen receptgegevens beschikbaar.</i>';
+                const parsedCostBreakdownHtml = costBreakdownText ? marked.parse(costBreakdownText) : '<i>Geen kosten opbouw beschikbaar.</i>';
 
                 listItem.innerHTML = `
                     <b>${displayTitle}</b>
                     <br>
                     <small>Opgeslagen op: ${new Date(recipe.created_at).toLocaleString('nl-NL')}</small>
-                    <div id="cost-breakdown-${recipe.task_id}" class="cost-breakdown-section" style="margin-top: 5px; border-top: 1px solid #eee; padding-top: 5px;">
-                       ${parsedCostBreakdownHtml}
-                    </div>
                     <details style="margin-top: 10px;">
-                        <summary>Bekijk Origineel / Verfijn</summary>
-                        <div class="original-recipe-content">${marked.parse(formattedRecipeText)}</div>
-                        <div class="refine-section" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                        <summary>Bekijk Details (Recept & Kosten)</summary>
+                        <h4>Recept</h4>
+                        <div class="original-recipe-content">${parsedRecipeHtml}</div>
+                        <h4 style="margin-top: 15px;">Kosten Opbouw</h4>
+                        <div id="cost-breakdown-${recipe.id}" class="cost-breakdown-section">
+                           ${parsedCostBreakdownHtml}
+                        </div>
+                        <div class="refine-section" style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                             <h4>Recept Verfijnen</h4>
                             <input type="text" class="refine-input" placeholder="Vraag om verfijning (bv. maak het pittiger)" style="width: 70%; margin-right: 5px;">
                             <button class="refine-btn">Verfijn Recept</button>
                             <div class="refine-loading" style="display: none; font-style: italic; color: #888;">Verfijnen...</div>
-                            <div class="refined-recipe-output" style="margin-top: 5px; background-color: #eef;"></div>
+                            <div class="refined-recipe-output" style="margin-top: 5px; background-color: #eef; padding: 5px; border-radius: 3px;"></div>
                         </div>
                     </details>
                     `;
-                //<button class="calculate-actual-cost-btn" style="margin-left: 10px;" disabled title="Bereken werkelijke kosten (nog niet geïmplementeerd)">Bereken Kosten</button>
                 recipeListElement.appendChild(listItem);
             });
         } else {
