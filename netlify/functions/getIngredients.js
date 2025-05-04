@@ -1,7 +1,7 @@
 // Remove the direct require for createClient
 // const { createClient } = require('@supabase/supabase-js');
-// Require the shared client instead
-const supabase = require('../lib/supabaseClient');
+// Require the shared client instead using the correct relative path
+const supabase = require('./lib/supabaseClient');
 
 exports.handler = async function (event, context) {
     if (event.httpMethod !== 'GET') {
