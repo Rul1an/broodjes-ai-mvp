@@ -1,14 +1,99 @@
 const { getServiceClient } = require('./lib/supabaseClient');
 const { getOpenAIClient } = require('./lib/openaiClient'); // OpenAI client needed for AI helpers
+// Remove old costUtils require
+// const {
+//     parseQuantityAndUnit,
+//     normalizeUnit,
+//     getConvertedQuantity,
+//     getAICostBreakdownEstimate,
+//     getAIEstimateForSpecificItems,
+//     extractTotalFromAIBreakdown
+// } = require('./lib/costUtils');
+
+// Import from new utility files
 const {
     parseQuantityAndUnit,
     normalizeUnit,
-    getConvertedQuantity,
+    getConvertedQuantity
+} = require('./lib/unitUtils');
+const {
     getAICostBreakdownEstimate,
     getAIEstimateForSpecificItems,
     extractTotalFromAIBreakdown
-} = require('./lib/costUtils');
+} = require('./lib/aiCostUtils');
 
+// --- Helper Functions for Breakdown Scenarios ---
+
+function _formatDbOnlyBreakdown(calculatedItems, totalDbCost) {
+    const calculationType = 'db';
+    const finalTotalCost = parseFloat(totalDbCost.toFixed(2));
+    console.log(`getCostBreakdown: DB calculation successful. Total: ${finalTotalCost}`);
+    let finalBreakdownText = `## Geschatte Kosten Opbouw (Database):\n`;
+    calculatedItems.forEach(item => {
+        finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
+    });
+    finalBreakdownText += `- **Totaal Geschat:** €${finalTotalCost.toFixed(2)}\n`;
+    return { finalBreakdownText, calculationType, finalTotalCost };
+}
+
+async function _handleAiOnlyBreakdown(recipeJson) {
+    const calculationType = 'ai';
+    console.log(`getCostBreakdown: No ingredients calculated from DB. Falling back to full AI estimation.`);
+    const aiBreakdown = await getAICostBreakdownEstimate(recipeJson);
+    let finalBreakdownText;
+    let finalTotalCost = null;
+    if (aiBreakdown) {
+        finalBreakdownText = aiBreakdown;
+        finalTotalCost = extractTotalFromAIBreakdown(finalBreakdownText);
+    } else {
+        finalBreakdownText = "## Geschatte Kosten Opbouw:\n- Kon kosten niet berekenen (AI fallback mislukt).\n- **Totaal Geschat:** N/A\n";
+    }
+    return { finalBreakdownText, calculationType, finalTotalCost };
+}
+
+async function _handleHybridBreakdown(calculatedItems, failedItems, totalDbCost) {
+    let calculationType = 'hybrid';
+    let finalBreakdownText;
+    let finalTotalCost;
+    console.log(`getCostBreakdown: Hybrid calculation. DB total: ${totalDbCost}. Estimating ${failedItems.length} failed items via AI.`);
+
+    const aiEstimateForFailed = await getAIEstimateForSpecificItems(failedItems);
+
+    if (aiEstimateForFailed !== null) {
+        finalTotalCost = parseFloat((totalDbCost + aiEstimateForFailed).toFixed(2));
+        console.log(`getCostBreakdown: Hybrid - AI estimate for failed items: ${aiEstimateForFailed}, Final Total: ${finalTotalCost}`);
+
+        finalBreakdownText = `## Geschatte Kosten Opbouw (Hybride - DB + AI):\n`;
+        finalBreakdownText += `### Van Database:\n`;
+        calculatedItems.forEach(item => {
+            finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
+        });
+        finalBreakdownText += `### Geschat door AI (niet in DB):\n`;
+        failedItems.forEach(item => {
+            finalBreakdownText += `- ${item.name} (${item.quantity_string}): (Reden: ${item.reason || 'onbekend'})\n`;
+        });
+        finalBreakdownText += `\n- **Totaal Geschat (Hybride):** €${finalTotalCost.toFixed(2)}\n`;
+        finalBreakdownText += `  *(€${totalDbCost.toFixed(2)} van DB + €${aiEstimateForFailed.toFixed(2)} geschat voor rest)*\n`;
+    } else {
+        console.error("Hybrid: AI estimation for specific failed items failed. Showing only DB part.");
+        finalTotalCost = parseFloat(totalDbCost.toFixed(2));
+        finalBreakdownText = `## Geschatte Kosten Opbouw (Deels Database - AI Mislukt):\n`;
+        finalBreakdownText += `### Van Database:\n`;
+        calculatedItems.forEach(item => {
+            finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
+        });
+        finalBreakdownText += `### Niet Berekenbaar via AI:\n`;
+        failedItems.forEach(item => {
+            finalBreakdownText += `- ${item.name} (${item.quantity_string}): (Reden: ${item.reason || 'onbekend'})\n`;
+        });
+        finalBreakdownText += `\n- **Totaal (Alleen DB Deel):** €${finalTotalCost.toFixed(2)}\n`;
+        finalBreakdownText += `- *AI kon kosten voor ontbrekende items niet schatten.*\n`;
+        calculationType = 'hybrid_ai_failed';
+    }
+    return { finalBreakdownText, calculationType, finalTotalCost };
+}
+
+// --- Main Handler ---
 exports.handler = async function (event, context) {
     // 1. Validate Request
     if (event.httpMethod !== 'GET') {
@@ -117,11 +202,11 @@ exports.handler = async function (event, context) {
         const ingredientPriceMap = new Map(ingredientsData.map(ing => [ing.name.toLowerCase(), ing]));
         console.log(`getCostBreakdown: Fetched ${ingredientPriceMap.size} ingredients.`);
 
-        // 6. Calculate Breakdown - REVISED LOGIC with Unit Conversion
+        // 6. Calculate Initial Breakdown (DB Attempt)
         let totalDbCost = 0;
         const calculatedItems = [];
         const failedItems = [];
-        console.log(`getCostBreakdown: Calculating breakdown for task ${taskId} (Hybrid Approach V3 - Unit Conversion)...`);
+        console.log(`getCostBreakdown: Calculating initial breakdown for task ${taskId}...`);
         for (const recipeIngredient of recipeJson.ingredients) {
             const ingredientName = recipeIngredient.name?.toLowerCase();
             const quantityString = recipeIngredient.quantity || '';
@@ -174,87 +259,22 @@ exports.handler = async function (event, context) {
             calculatedItems.push({ ...itemInfo, cost: calculatedCost, unit: dbUnit, quantity_value: valueToUse }); // Note: unit shown is DB unit now
             totalDbCost += calculatedCost;
         }
-        console.log(`getCostBreakdown: Finished calculation loop. DB calculated: ${calculatedItems.length}, Failed: ${failedItems.length}`);
+        console.log(`getCostBreakdown: Finished initial calculation. DB calculated: ${calculatedItems.length}, Failed: ${failedItems.length}`);
 
-        // 7. Determine Response Type, Format Breakdown, Update DB, and Return - REVISED LOGIC
-        let finalBreakdownText = "";
-        let calculationType = "";
-        let finalTotalCost = null;
-
+        // 7. Determine Final Breakdown based on results
+        let breakdownResult;
         if (failedItems.length === 0 && calculatedItems.length > 0) {
-            // Scenario 1: All DB Success (no change needed here)
-            calculationType = 'db';
-            finalTotalCost = parseFloat(totalDbCost.toFixed(2));
-            console.log(`getCostBreakdown: DB calculation successful. Total: ${finalTotalCost}`);
-            finalBreakdownText = `## Geschatte Kosten Opbouw (Database):
-`;
-            calculatedItems.forEach(item => {
-                finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
-            });
-            finalBreakdownText += `- **Totaal Geschat:** €${finalTotalCost.toFixed(2)}\n`;
-
+            // Scenario 1: All DB Success
+            breakdownResult = _formatDbOnlyBreakdown(calculatedItems, totalDbCost);
         } else if (calculatedItems.length === 0 && failedItems.length > 0) {
-            // Scenario 2: All Failed - Use Full AI Breakdown (no change needed here)
-            calculationType = 'ai';
-            console.log(`getCostBreakdown: No ingredients calculated from DB. Falling back to full AI estimation.`);
-            const aiBreakdown = await getAICostBreakdownEstimate(recipeJson);
-            if (aiBreakdown) {
-                finalBreakdownText = aiBreakdown;
-                finalTotalCost = extractTotalFromAIBreakdown(finalBreakdownText);
-            } else {
-                finalBreakdownText = "## Geschatte Kosten Opbouw:\n- Kon kosten niet berekenen (AI fallback mislukt).\n- **Totaal Geschat:** N/A\n";
-            }
-
+            // Scenario 2: All Failed - Use Full AI Breakdown
+            breakdownResult = await _handleAiOnlyBreakdown(recipeJson);
         } else {
-            // Scenario 3: Hybrid calculation - REVISED
-            calculationType = 'hybrid';
-            console.log(`getCostBreakdown: Hybrid calculation. DB total: ${totalDbCost}. Estimating ${failedItems.length} failed items via AI.`);
-
-            // --- Call new helper for FAILED items ONLY ---
-            const aiEstimateForFailed = await getAIEstimateForSpecificItems(failedItems);
-
-            if (aiEstimateForFailed !== null) {
-                // Successfully got AI estimate for failed items
-                finalTotalCost = parseFloat((totalDbCost + aiEstimateForFailed).toFixed(2));
-                console.log(`getCostBreakdown: Hybrid - AI estimate for failed items: ${aiEstimateForFailed}, Final Total: ${finalTotalCost}`);
-
-                // Format hybrid breakdown text
-                finalBreakdownText = `## Geschatte Kosten Opbouw (Hybride - DB + AI):
-`;
-                finalBreakdownText += `### Van Database:
-`;
-                calculatedItems.forEach(item => {
-                    finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
-                });
-                finalBreakdownText += `### Geschat door AI (niet in DB):
-`;
-                failedItems.forEach(item => {
-                    finalBreakdownText += `- ${item.name} (${item.quantity_string}): (Reden: ${item.reason || 'onbekend'})\n`;
-                });
-                finalBreakdownText += `\n- **Totaal Geschat (Hybride):** €${finalTotalCost.toFixed(2)}\n`;
-                finalBreakdownText += `  *(€${totalDbCost.toFixed(2)} van DB + €${aiEstimateForFailed.toFixed(2)} geschat voor rest)*\n`;
-
-            } else {
-                // AI estimation for specific items failed
-                console.error("Hybrid: AI estimation for specific failed items failed. Showing only DB part.");
-                finalTotalCost = parseFloat(totalDbCost.toFixed(2)); // Best guess is the DB part
-                finalBreakdownText = `## Geschatte Kosten Opbouw (Deels Database - AI Mislukt):
-`;
-                finalBreakdownText += `### Van Database:
-`;
-                calculatedItems.forEach(item => {
-                    finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
-                });
-                finalBreakdownText += `### Niet Berekenbaar via AI:
-`;
-                failedItems.forEach(item => {
-                    finalBreakdownText += `- ${item.name} (${item.quantity_string}): (Reden: ${item.reason || 'onbekend'})\n`;
-                });
-                finalBreakdownText += `\n- **Totaal (Alleen DB Deel):** €${finalTotalCost.toFixed(2)}\n`;
-                finalBreakdownText += `- *AI kon kosten voor ontbrekende items niet schatten.*\n`;
-                calculationType = 'hybrid_ai_failed'; // More specific type
-            }
+            // Scenario 3: Hybrid calculation
+            breakdownResult = await _handleHybridBreakdown(calculatedItems, failedItems, totalDbCost);
         }
+
+        const { finalBreakdownText, calculationType } = breakdownResult;
 
         // 8. Update Database
         if (finalBreakdownText) {

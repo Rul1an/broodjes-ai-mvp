@@ -63,17 +63,26 @@ export async function loadIngredients() {
 const handleAddIngredient = async () => {
     const name = ingredientNameInput.value.trim();
     const unit = ingredientUnitInput.value.trim();
-    const price = ingredientPriceInput.value;
+    const priceString = ingredientPriceInput.value.trim().replace(',', '.'); // Allow comma as decimal separator
 
-    if (!name || !unit || price === '') {
+    // Basic check for empty fields
+    if (!name || !unit || priceString === '') {
         alert('Vul alle velden in voor het ingrediënt.');
+        return;
+    }
+
+    // Validate price is a non-negative number
+    const price = parseFloat(priceString);
+    if (isNaN(price) || price < 0) {
+        alert('Prijs moet een geldig, niet-negatief getal zijn (bv. 1.25 of 0.50).');
         return;
     }
 
     ui.setButtonLoading(addIngredientBtn, true, 'Toevoegen...');
 
     try {
-        const data = await api.addIngredient(name, unit, parseFloat(price));
+        // Use the validated price variable
+        const data = await api.addIngredient(name, unit, price);
         await loadIngredients(); // Reload the list (will use cache if appropriate)
 
     } catch (errorPayload) {

@@ -64,9 +64,10 @@ The application is built using a combination of a static frontend, serverless fu
     *   `/api/clearRecipes` (`clearRecipes.js`): Deletes all records from the `async_tasks` table. Requires Service Role Key.
 
 *   **Backend - Shared Libraries (`netlify/functions/lib/`):**
-    *   `costUtils.js`: Contains helpers for parsing quantities/units, normalization, conversion, and cost calculation logic used by `/api/getCostBreakdown`.
     *   `openaiClient.js`: Utility to initialize and provide the OpenAI API client.
     *   `supabaseClient.js`: Utility to initialize and provide the Supabase client (using Service Role Key).
+    *   `unitUtils.js`: Contains helpers for parsing quantities/units, normalization, and conversion logic used by `/api/getCostBreakdown`.
+    *   `aiCostUtils.js`: Contains helpers for AI-based cost estimation and extracting cost totals from AI responses, used by `/api/getCostBreakdown`.
 
 *   **Backend - Google Cloud Functions (GCF):**
     *   ~~`gcf-generate-recipe/index.js` (Deployed as `generateRecipe`):~~ (Removed - Logic migrated to Netlify Function `/api/generateRecipe`)
@@ -253,11 +254,17 @@ This section outlines the planned steps for implementing improvements.
 *   **Stap 5: Verbeter Backend Logging (Done)**
     *   **Doel:** Betere debugging mogelijkheden.
     *   **Actie:** Zorg dat alle `catch` blokken in backend functies de volledige error (incl. stack trace) loggen via `console.error(error);`.
-*   **Stap 6: Voeg Frontend Input Validatie toe (Next)**
+*   **Stap 6: Voeg Frontend Input Validatie toe (Done)**
     *   **Doel:** Voorkom ongeldige API calls.
-    *   **Actie:** Voeg checks toe in frontend (bv. prijs = nummer) en overweeg backend validatie voor generate/refine.
+    *   **Actie:** Prijsvalidatie (non-negatief getal) toegevoegd in `ingredientView.js`.
+*   **Stap 7: Refactor Backend Utilities (`costUtils.js`) (Done)**
+    *   **Doel:** Verbeter structuur/onderhoudbaarheid.
+    *   **Actie:** `costUtils.js` opgesplitst in `unitUtils.js` (parsing/normalisatie/conversie) en `aiCostUtils.js` (AI helpers & extractie). Oude/redundante helpers verwijderd.
+*   **Stap 8: Refactor Backend Hoofdlogica (`getCostBreakdown.js`) (Done)**
+    *   **Doel:** Verbeter leesbaarheid.
+    *   **Actie:** Logica voor DB-only, AI-only, en Hybrid scenario's geëxtraheerd naar interne helper functies binnen `getCostBreakdown.js`.
 
-**Fase 3: Geavanceerde Optimalisatie & Features (Later)**
+**Fase 3: Geavanceerde Optimalisatie & Features (Next)**
 
 *   **Stap 9: Implementeer OpenAI Request Caching (Server-side)**
 *   **Stap 10: Implementeer Verdere UI/UX Features** (Visualiseer Broodje knop, Ingrediënt Afbeeldingen via GCF, etc.)
