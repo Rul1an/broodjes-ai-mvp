@@ -238,6 +238,10 @@ exports.handler = async function (event, context) {
         // 9. Return Response
         return {
             statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': '*', // Allow requests from any origin (adjust in production)
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({
                 breakdown: finalBreakdownText,
                 calculationType: calculationType
@@ -273,7 +277,10 @@ exports.handler = async function (event, context) {
 
         return {
             statusCode: statusCode,
-            headers: { 'Access-Control-Allow-Origin': '*' }, // Ensure CORS header
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({
                 error: {
                     message: userMessage,

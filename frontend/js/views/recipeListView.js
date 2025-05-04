@@ -44,9 +44,6 @@ export function displayRecipe(data) {
  */
 export function displayCostBreakdown(taskId, breakdownData) {
     console.log(`Displaying cost breakdown for ${taskId}:`, breakdownData);
-    // --- Debugging Log ---
-    console.log(`Received breakdownData for task ${taskId}:`, JSON.stringify(breakdownData, null, 2));
-    // --- End Debugging Log ---
     const costElement = document.getElementById(`cost-breakdown-${taskId}`);
 
     if (!costElement) {
