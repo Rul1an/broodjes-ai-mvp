@@ -5,6 +5,7 @@ const GCF_IMAGE_GENERATION_URL = process.env.GCF_IMAGE_GENERATION_URL;
 
 exports.handler = async function (event, context) {
     console.log('--- triggerIngredientImageGeneration handler started ---');
+    console.log('Received event body:', event.body);
 
     if (event.httpMethod !== 'POST') {
         return {
