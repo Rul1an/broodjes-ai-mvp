@@ -37,11 +37,11 @@ async function handleResponse(response) {
 
 // --- Exported API Functions ---
 
-export async function generateRecipe(idea, model) {
+export async function generateRecipe(ingredients, model) {
     const response = await fetch(GENERATE_RECIPE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idea, model })
+        body: JSON.stringify({ ingredients: ingredients, model: model })
     });
     return handleResponse(response);
 }
