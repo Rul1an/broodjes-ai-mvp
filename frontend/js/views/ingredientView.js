@@ -95,6 +95,7 @@ const handleDeleteIngredient = async (ingredientId, button) => {
         const row = button.closest('tr');
         if (row) {
             row.remove();
+            return; // Exit early on success
         } else {
             await loadIngredients();
         }
@@ -103,7 +104,12 @@ const handleDeleteIngredient = async (ingredientId, button) => {
         const errorMessage = errorPayload?.message || 'Onbekende fout bij verwijderen.';
         console.error(`Error deleting ingredient ${ingredientId}:`, errorPayload);
         ui.displayErrorToast(errorMessage);
-        ui.setButtonLoading(button, false);
+    } finally {
+        // Always re-enable the button if it still exists (e.g., if row removal failed or error occurred)
+        // Check if the button's parent element still exists in the DOM
+        if (button.isConnected) {
+            ui.setButtonLoading(button, false);
+        }
     }
 };
 

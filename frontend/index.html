@@ -101,8 +101,9 @@
             </div>
             <div id="resultaat-area">
                 <h3>Gegenereerd Recept:</h3>
-                <div id="loading" style="display: none;">Bezig met genereren...</div>
-                <!-- Changed pre to div for HTML rendering -->
+                <div id="loading" style="display: none;">
+                    <div class="loading-spinner"></div>
+                </div>
                 <div id="recept-output"></div>
                 <p id="estimated-cost-output" style="font-weight: bold; margin-top: 10px;"></p>
             </div>
@@ -111,7 +112,9 @@
         <!-- View 2: Saved Recipes -->
         <div id="view-recipes" class="view">
             <h2>Opgeslagen Recepten</h2>
-            <div id="loading-list" style="display: none;">Recepten laden...</div>
+            <div id="loading-list" style="display: none;">
+                <div class="loading-spinner"></div>
+            </div>
             <ul id="recepten-lijst">
                 <!-- Recepten worden hier dynamisch ingeladen -->
             </ul>
@@ -132,7 +135,9 @@
                 <p id="ingredient-feedback" style="color: green; display: none;"></p>
             </div>
             <h3>Bestaande Ingrediënten</h3>
-            <div id="loading-ingredients" style="display: none;">Ingrediënten laden...</div>
+            <div id="loading-ingredients" style="display: none;">
+                <div class="loading-spinner"></div>
+            </div>
             <table id="ingredienten-tabel">
                 <thead>
                     <tr>

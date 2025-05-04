@@ -185,8 +185,8 @@ This section tracks areas identified for potential improvement or further invest
 **Active / To-Do:**
 
 *   **Standardize Client/Key Usage:**
-    *   **Ensure consistent use of shared clients:** Verify *all* backend functions correctly import and use the factory functions from `lib/supabaseClient.js` (i.e., `getServiceClient()`) and the client from `lib/openaiClient.js`. The recent fix in `getIngredients.js` highlighted the importance of correct pathing and calling the factory function.
-    *   Review key usage: Double-check no keys (Anon vs. Service Role) are used inappropriately across functions.
+    *   **(Done)** Verified all backend functions consistently use shared clients (`lib/supabaseClient.js`, `lib/openaiClient.js`).
+    *   **(Done)** Reviewed key usage; Service Role Key is used by shared Supabase client.
 
 *   **Optimize AI Calls & Costs:**
     *   Review prompt engineering for efficiency and quality across `generateRecipe`, `refineRecipe`, and `getCostBreakdown`.
@@ -195,8 +195,8 @@ This section tracks areas identified for potential improvement or further invest
 
 *   **Enhance Error Handling & Logging:**
     *   **(Done) Standardize Backend Error Responses:** All Netlify functions now return a consistent JSON structure (`{ error: { message, code, details } }`) upon failure, including appropriate HTTP status codes.
-    *   **(Next) Implement Frontend Error Display:** Modify `apiService.js` to parse the standardized error response. Implement a user-friendly display mechanism (e.g., toast notification via `uiUtils.js`) in the view modules (`generateView`, `ingredientView`, `recipeListView`) to show the `error.message` to the user instead of just logging to the console.
-    *   **(Backend) Improve Logging:** Ensure all `catch` blocks log the *full* error object (including stack trace) server-side for better debugging.
+    *   **(Done) Implement Frontend Error Display:** Modified `apiService.js` to parse the standardized error response. View modules now use the error payload (`errorPayload.message`) to display user-friendly feedback via `uiUtils.displayErrorToast`.
+    *   **(Next) Improve Backend Logging:** Ensure all `catch` blocks log the *full* error object (including stack trace) server-side for better debugging.
 
 *   **Improve Code Structure & Readability:**
     *   **(Next - Optional/Larger) Refactor Backend Utilities (`costUtils.js`):** Split the large `costUtils.js` into smaller, more focused modules (e.g., `unitConversion.js`, `quantityParsing.js`, `aiCostHelpers.js`) and update `require` statements in `getCostBreakdown.js`.
@@ -220,7 +220,9 @@ This section tracks areas identified for potential improvement or further invest
         *   Modify the "Add Ingredient" / "Update Ingredient" backend logic: When an ingredient is added/updated, asynchronously trigger a GCF to generate an image using the ingredient name as a prompt (using the OpenAI Image API - gpt-4o or dall-e-3). Store the resulting image URL in the new `image_url` column. Use a placeholder/default if generation fails.
         *   Modify the `getCostBreakdown` logic (or frontend rendering) to fetch and display these images alongside ingredient names. If an image URL exists, use it; otherwise, show a default/placeholder.
 
-*   **Input Validation:** Add stricter input validation on both the frontend (before sending API requests) and backend (within Netlify functions) to prevent errors and ensure data integrity.
+*   **Input Validation:**
+    *   **(Done)** Reviewed backend functions (`add`, `update`, `delete` ingredient); validation for required fields and types is present.
+    *   **(Next)** Add stricter input validation on the *frontend* (e.g., check for numbers in price field before sending) and consider backend validation for `generateRecipe`/`refineRecipe` inputs.
 
 *   **Investigate Unused/Redundant Code:**
     *   **(Done)** Reviewed and removed `generate.js` and `get-processed-recipe.js`.

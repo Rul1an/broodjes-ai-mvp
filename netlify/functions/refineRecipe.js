@@ -1,6 +1,6 @@
 const { getServiceClient } = require('./lib/supabaseClient');
 const { getOpenAIClient } = require('./lib/openaiClient');
-const { extractEstimatedCost } = require('./lib/costUtils');
+const { extractTotalFromAIBreakdown } = require('./lib/costUtils');
 const { getRefinePrompt } = require('./promptTemplates.js');
 
 // Keep local helper function for now, unless moved to costUtils
@@ -125,8 +125,8 @@ exports.handler = async function (event, context) {
         // --- END Update ---
 
         // --- Extract Cost & Return ---
-        const estimated_total_cost = extractEstimatedCost(refined_recipe_text);
-        console.log(`Extracted cost from refined recipe: ${estimated_total_cost}`); // Log result
+        const estimated_total_cost = extractTotalFromAIBreakdown(refined_recipe_text);
+        console.log(`Extracted total cost from refined recipe text: ${estimated_total_cost}`); // Log result
 
         return {
             statusCode: 200,
@@ -134,6 +134,7 @@ exports.handler = async function (event, context) {
                 recipe: refined_recipe_text,
                 estimated_cost: estimated_total_cost
             }),
+            headers: { 'Content-Type': 'application/json' }
         };
         // ---------------------------
 
