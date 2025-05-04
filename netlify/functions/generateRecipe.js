@@ -1,5 +1,6 @@
 const { getServiceClient } = require('./lib/supabaseClient');
 const { getOpenAIClient } = require('./lib/openaiClient');
+const { generatePromptHash, getCachedOpenAIResponse, setCachedOpenAIResponse } = require('./lib/cacheUtils');
 
 exports.handler = async (event, context) => {
     // Allow OPTIONS requests for CORS preflight
@@ -61,12 +62,10 @@ exports.handler = async (event, context) => {
 
         console.log(`Starting OpenAI generation for: ${ingredients}`);
 
-        // --- Call OpenAI API ---
+        // --- Prepare OpenAI Request & Check Cache ---
         const systemPrompt = `Je bent een expert in het bedenken van recepten. Genereer een recept gebaseerd op de volgende input. Geef ALLEEN een JSON-object terug met de volgende structuur: {"title": "Recept Titel", "description": "Korte omschrijving", "ingredients": [{"name": "Ingrediënt naam", "quantity": "Hoeveelheid (bv. 100g, 2 stuks)"}], "instructions": ["Stap 1", "Stap 2", ...]}. Gebruik de taal: ${validatedLanguage}.`;
         const userPrompt = `Ingrediënten: ${ingredients}. Type gerecht: ${type}. Taal: ${validatedLanguage}.`;
-
-        console.log(`Using OpenAI model: ${modelToUse}`);
-        const completion = await openai.chat.completions.create({
+        const openAIRequestPayload = {
             model: modelToUse,
             messages: [
                 { role: "system", content: systemPrompt },
@@ -74,33 +73,63 @@ exports.handler = async (event, context) => {
             ],
             temperature: 0.7,
             response_format: { type: "json_object" },
-        });
+        };
+        const promptHash = generatePromptHash(openAIRequestPayload);
 
-        console.log('Received OpenAI response.');
-        const aiResponseContent = completion.choices[0]?.message?.content;
-
-        if (!aiResponseContent) {
-            throw new Error('OpenAI response did not contain content.');
-        }
-
-        // Parse the JSON response from OpenAI
+        let completion = await getCachedOpenAIResponse(promptHash);
         let recipeResultJson;
-        try {
-            recipeResultJson = JSON.parse(aiResponseContent);
-            console.log('Successfully parsed OpenAI JSON response.');
-        } catch (parseError) {
-            console.error('Failed to parse OpenAI JSON response:', aiResponseContent);
-            throw new Error('OpenAI did not return valid JSON.');
+
+        if (completion) {
+            // Cache Hit
+            console.log(`Using cached OpenAI response for hash: ${promptHash}`);
+            // Need to parse the response content from the cached completion object
+            const aiResponseContent = completion.choices?.[0]?.message?.content;
+            if (!aiResponseContent) {
+                console.error('Cached response is invalid or missing content.', completion);
+                // Consider attempting refetch or throwing error
+                throw new Error('Invalid cached OpenAI response structure.');
+            }
+            try {
+                recipeResultJson = JSON.parse(aiResponseContent);
+            } catch (parseError) {
+                console.error('Failed to parse cached OpenAI JSON response:', aiResponseContent);
+                // Consider attempting refetch or throwing error
+                throw new Error('Cached OpenAI response contained invalid JSON.');
+            }
+
+        } else {
+            // Cache Miss - Call OpenAI API
+            console.log(`Cache miss for hash: ${promptHash}. Calling OpenAI API...`);
+            completion = await openai.chat.completions.create(openAIRequestPayload);
+
+            console.log('Received OpenAI response.');
+            // --- Store successful response in cache BEFORE parsing ---
+            // We store the whole completion object
+            await setCachedOpenAIResponse(promptHash, completion);
+            // ---------------------------------------------------------
+
+            const aiResponseContent = completion.choices?.[0]?.message?.content;
+            if (!aiResponseContent) {
+                throw new Error('OpenAI response did not contain content.');
+            }
+
+            // Parse the JSON response from OpenAI
+            try {
+                recipeResultJson = JSON.parse(aiResponseContent);
+                console.log('Successfully parsed OpenAI JSON response.');
+            } catch (parseError) {
+                console.error('Failed to parse OpenAI JSON response:', aiResponseContent);
+                throw new Error('OpenAI did not return valid JSON.');
+            }
         }
-        // --- End OpenAI API Call ---
+        // --- End OpenAI API Call / Cache Handling ---
 
         // --- Validate OpenAI Response Structure (Basic) ---
         if (typeof recipeResultJson !== 'object' || recipeResultJson === null || !recipeResultJson.title || !Array.isArray(recipeResultJson.ingredients) || !Array.isArray(recipeResultJson.instructions)) {
-            console.error("Invalid OpenAI response structure:", recipeResultJson);
+            console.error("Invalid OpenAI response structure (from cache or API):", recipeResultJson);
             throw new Error('OpenAI response has invalid structure.');
         }
         // --- End Validation ---
-
 
         // --- Insert COMPLETE Task into Supabase ---
         console.log('Inserting generated recipe into async_tasks table...');

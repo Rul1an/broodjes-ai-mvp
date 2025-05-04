@@ -67,7 +67,9 @@ The application is built using a combination of a static frontend, serverless fu
     *   `openaiClient.js`: Utility to initialize and provide the OpenAI API client.
     *   `supabaseClient.js`: Utility to initialize and provide the Supabase client (using Service Role Key).
     *   `unitUtils.js`: Contains helpers for parsing quantities/units, normalization, and conversion logic used by `/api/getCostBreakdown`.
-    *   `aiCostUtils.js`: Contains helpers for AI-based cost estimation and extracting cost totals from AI responses, used by `/api/getCostBreakdown`.
+    *   `aiCostUtils.js`: Contains helpers for AI-based cost estimation and extracting cost totals from AI responses, used by `/api/getCostBreakdown`. Uses caching via `cacheUtils.js`.
+    *   `cacheUtils.js`: Provides functions (`generatePromptHash`, `getCachedOpenAIResponse`, `setCachedOpenAIResponse`) for caching OpenAI responses in the `openai_cache` Supabase table.
+    *   ~~`costUtils.js`:~~ (Removed - Split into `unitUtils.js` and `aiCostUtils.js`)
 
 *   **Backend - Google Cloud Functions (GCF):**
     *   ~~`gcf-generate-recipe/index.js` (Deployed as `generateRecipe`):~~ (Removed - Logic migrated to Netlify Function `/api/generateRecipe`)
@@ -266,5 +268,7 @@ This section outlines the planned steps for implementing improvements.
 
 **Fase 3: Geavanceerde Optimalisatie & Features (Next)**
 
-*   **Stap 9: Implementeer OpenAI Request Caching (Server-side)**
-*   **Stap 10: Implementeer Verdere UI/UX Features** (Visualiseer Broodje knop, Ingrediënt Afbeeldingen via GCF, etc.)
+*   **Stap 9: Implementeer OpenAI Request Caching (Server-side) (Done)**
+    *   **Doel:** Verminder onnodige OpenAI calls en kosten.
+    *   **Actie:** Database caching geïmplementeerd via `cacheUtils.js` en `openai_cache` tabel. Functies `generateRecipe`, `refineRecipe`, en AI helpers in `aiCostUtils` checken nu de cache en slaan nieuwe resultaten op.
+*   **Stap 10: Implementeer Verdere UI/UX Features (Next)** (Visualiseer Broodje knop, Ingrediënt Afbeeldingen via GCF, etc.)

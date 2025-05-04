@@ -1,7 +1,8 @@
 const { getServiceClient } = require('./lib/supabaseClient');
 const { getOpenAIClient } = require('./lib/openaiClient');
-const { extractTotalFromAIBreakdown } = require('./lib/costUtils');
+const { extractTotalFromAIBreakdown } = require('./lib/aiCostUtils');
 const { getRefinePrompt } = require('./promptTemplates.js');
+const { generatePromptHash, getCachedOpenAIResponse, setCachedOpenAIResponse } = require('./lib/cacheUtils');
 
 // Keep local helper function for now, unless moved to costUtils
 
@@ -77,32 +78,49 @@ exports.handler = async function (event, context) {
         const existingBreakdownText = taskData.cost_breakdown || "Geen kosten opbouw beschikbaar."; // Fallback text
         // --- END Fetch ---
 
-        // --- Prompt for Refinement (Updated) ---
+        // --- Prepare OpenAI Request & Check Cache ---
+        const modelToUse = 'gpt-3.5-turbo'; // Or potentially 'gpt-4o'
         const prompt = getRefinePrompt(originalRecipeJsonString, existingBreakdownText, trimmedRefinementRequest);
-        // ---------------------------
-
-        // --- Call OpenAI API ---
-        console.log("Calling OpenAI API for recipe refinement...");
-        const chatCompletion = await openai.chat.completions.create({
+        const openAIRequestPayload = {
+            model: modelToUse,
             messages: [
                 {
                     role: 'user',
                     content: prompt,
                 }
             ],
-            // Consider using a potentially more capable model for refinement tasks
-            model: 'gpt-3.5-turbo', // Or potentially 'gpt-4o' if available/needed
-        });
+            // temperature, response_format etc. can be added if needed
+        };
+        const promptHash = generatePromptHash(openAIRequestPayload);
 
-        const refined_recipe_text = chatCompletion.choices[0]?.message?.content;
+        let chatCompletion = await getCachedOpenAIResponse(promptHash);
+        let refined_recipe_text;
 
-        // Check if response exists and has content
-        if (!refined_recipe_text || refined_recipe_text.trim().length === 0) {
-            console.error('OpenAI response was empty or did not contain recipe text.', chatCompletion);
-            throw new Error('Failed to get valid refined recipe text from AI.');
+        if (chatCompletion) {
+            // Cache Hit
+            console.log(`Using cached OpenAI response for refine hash: ${promptHash}`);
+            refined_recipe_text = chatCompletion.choices?.[0]?.message?.content?.trim();
+            if (!refined_recipe_text) {
+                console.error('Cached refine response is invalid or missing content.', chatCompletion);
+                throw new Error('Invalid cached OpenAI response structure for refinement.');
+            }
+        } else {
+            // Cache Miss
+            console.log(`Cache miss for refine hash: ${promptHash}. Calling OpenAI API...`);
+            chatCompletion = await openai.chat.completions.create(openAIRequestPayload);
+
+            // --- Store successful response in cache BEFORE processing ---
+            await setCachedOpenAIResponse(promptHash, chatCompletion);
+            // ---------------------------------------------------------
+
+            refined_recipe_text = chatCompletion.choices?.[0]?.message?.content?.trim();
+            if (!refined_recipe_text) {
+                console.error('OpenAI refine response was empty or did not contain recipe text.', chatCompletion);
+                throw new Error('Failed to get valid refined recipe text from AI.');
+            }
+            console.log("Recipe refined by AI.");
         }
-        console.log("Recipe refined by AI.");
-        // -----------------------
+        // --- End OpenAI API Call / Cache Handling ---
 
         // --- Update async_tasks with refined text ---
         console.log(`refineRecipe: Updating task ${recipeId} with refined recipe/breakdown text...`);

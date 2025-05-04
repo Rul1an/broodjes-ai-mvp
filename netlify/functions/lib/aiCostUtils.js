@@ -1,4 +1,5 @@
 const { getOpenAIClient } = require('./openaiClient');
+const { generatePromptHash, getCachedOpenAIResponse, setCachedOpenAIResponse } = require('./cacheUtils');
 
 async function getAICostBreakdownEstimate(recipeJson) {
     const openai = getOpenAIClient();
@@ -30,8 +31,16 @@ async function getAICostBreakdownEstimate(recipeJson) {
     Geef ALLEEN de kostenopbouw in dit formaat terug, zonder extra uitleg.
     `;
 
+    const promptHash = generatePromptHash(prompt);
+    let cachedCompletion = await getCachedOpenAIResponse(promptHash);
+
+    if (cachedCompletion) {
+        console.log(`Cache Hit for AI Cost Breakdown hash: ${promptHash}`);
+        return cachedCompletion.choices?.[0]?.message?.content?.trim() || null;
+    }
+
     try {
-        console.log('Requesting AI cost breakdown estimation...');
+        console.log(`Cache Miss for AI Cost Breakdown hash: ${promptHash}. Requesting AI cost breakdown estimation...`);
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
@@ -41,9 +50,10 @@ async function getAICostBreakdownEstimate(recipeJson) {
             temperature: 0.3,
         });
 
-        const aiResponse = completion.choices[0]?.message?.content?.trim();
-        console.log('Raw AI cost breakdown response:', aiResponse);
+        await setCachedOpenAIResponse(promptHash, completion);
 
+        const aiResponse = completion.choices?.[0]?.message?.content?.trim();
+        console.log('Raw AI cost breakdown response:', aiResponse);
         return aiResponse || null;
 
     } catch (error) {
@@ -74,8 +84,28 @@ async function getAIEstimateForSpecificItems(failedItemsList) {
     ${ingredientsToEstimate}
     `;
 
+    const promptHash = generatePromptHash(prompt);
+    let cachedCompletion = await getCachedOpenAIResponse(promptHash);
+    let cost = null;
+
+    if (cachedCompletion) {
+        console.log(`Cache Hit for AI Specific Items hash: ${promptHash}`);
+        const cachedResponseText = cachedCompletion.choices?.[0]?.message?.content?.trim();
+        if (cachedResponseText) {
+            const parsedCost = parseFloat(cachedResponseText.replace(',', '.'));
+            if (!isNaN(parsedCost)) {
+                cost = parsedCost;
+            } else {
+                console.error('Failed to parse numerical cost from CACHED AI response for specific items:', cachedResponseText);
+            }
+        } else {
+            console.error('Cached specific items response is invalid or missing content.', cachedCompletion);
+        }
+        return cost;
+    }
+
     try {
-        console.log(`Requesting AI cost estimation for ${failedItemsList.length} specific items...`);
+        console.log(`Cache Miss for AI Specific Items hash: ${promptHash}. Requesting AI cost estimation for specific items...`);
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
@@ -85,18 +115,22 @@ async function getAIEstimateForSpecificItems(failedItemsList) {
             temperature: 0.2,
         });
 
-        const aiResponse = completion.choices[0]?.message?.content?.trim();
+        await setCachedOpenAIResponse(promptHash, completion);
+
+        const aiResponse = completion.choices?.[0]?.message?.content?.trim();
         console.log('Raw AI specific item cost response:', aiResponse);
 
         if (aiResponse) {
-            const cost = parseFloat(aiResponse.replace(',', '.'));
-            if (!isNaN(cost)) {
-                console.log(`Parsed AI specific item cost: ${cost}`);
-                return cost;
+            const parsedCost = parseFloat(aiResponse.replace(',', '.'));
+            if (!isNaN(parsedCost)) {
+                console.log(`Parsed AI specific item cost: ${parsedCost}`);
+                cost = parsedCost;
             }
         }
-        console.error('Failed to parse numerical cost from AI response for specific items:', aiResponse);
-        return null;
+        if (cost === null) {
+            console.error('Failed to parse numerical cost from AI response for specific items:', aiResponse);
+        }
+        return cost;
 
     } catch (error) {
         console.error('Error calling OpenAI API for specific item cost estimation:', error);
