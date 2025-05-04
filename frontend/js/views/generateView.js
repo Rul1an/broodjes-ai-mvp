@@ -45,9 +45,24 @@ const handleGenerateRecipe = async () => {
     recipeOutput.innerHTML = ''; // Clear previous output
 
     try {
+        // Pass type to the api service
         const result = await api.generateRecipe(idea, type, selectedModel);
 
+        // --- Debugging ---
+        console.log("API Result received in generateView:", result);
+        console.log("Type of result:", typeof result);
+        if (result) {
+            console.log("result.recipe:", result.recipe);
+            console.log("result.taskId:", result.taskId);
+            console.log("Type of result.recipe:", typeof result.recipe);
+            console.log("Type of result.taskId:", typeof result.taskId);
+        } else {
+            console.log("Result object is null or undefined.");
+        }
+        // --- End Debugging ---
+
         if (!result || !result.recipe || !result.taskId) {
+            console.error("Validation failed: result, result.recipe, or result.taskId is missing or falsy.");
             throw new Error('Ongeldig antwoord ontvangen van de server.');
         }
 
