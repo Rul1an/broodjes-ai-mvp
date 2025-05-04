@@ -23,12 +23,16 @@ The application is built using a combination of a static frontend, serverless fu
 
 *   **Backend - Netlify Functions (`netlify/functions/`):**
     *   `/api/generateRecipe` (`generateRecipe.js`): Handles recipe generation requests.
-        *   Receives ingredients/idea, type, language, model from frontend.
+        *   Receives `ingredients` (user idea) and `model` from frontend (type is hardcoded to 'broodje').
         *   Calls OpenAI API (model selected by user or default) to generate recipe JSON.
-        *   Saves the recipe JSON, idea, status ('completed') to the `async_tasks` table.
+        *   Saves the recipe JSON, idea, status ('completed'), model to the `async_tasks` table.
         *   Uses Supabase **Service Role Key** for database write.
-        *   Returns the generated recipe object and the new `taskId`.
-    *   `/api/getRecipes` (`getRecipes.js`): Fetches saved recipe data (original recipe JSON + cost breakdown text) from the Supabase `async_tasks` table. Uses Supabase **Service Role Key** (standardized).
+        *   Returns `{ taskId: <new_task_id>, recipe: <json_object> }` with `Content-Type: application/json` header.
+    *   `/api/getRecipes` (`getRecipes.js`): Fetches saved recipe data (recipe JSON, cost breakdown text, etc.) from the Supabase `async_tasks` table.
+        *   Selects completed tasks with non-null recipes.
+        *   Maps DB fields to frontend keys (`id`, `generated_recipe`, `cost_breakdown`, etc.).
+        *   Uses Supabase **Service Role Key**.
+        *   Returns `{ recipes: [...] }` with `Content-Type: application/json` header.
     *   `/api/getCostBreakdown` (`getCostBreakdown.js`): Calculates or estimates a detailed cost breakdown for a specific recipe task (`task_id`).
         *   Attempts to calculate costs for each ingredient using prices from the Supabase `ingredients` table.
         *   It **normalizes units** (e.g., 'gram' -> 'g', 'plakjes' -> 'stuks') from both the recipe and the database.
@@ -44,6 +48,7 @@ The application is built using a combination of a static frontend, serverless fu
             *   Includes fallback formatting if the AI estimate for specific items fails (`calculationType: 'hybrid_ai_failed'`).
         *   Saves the final generated breakdown text and the `calculationType` to `async_tasks`.
         *   Requires Supabase Service Role Key for DB writes.
+        *   Returns `{ breakdown: <text>, calculationType: <type> }` with `Content-Type: application/json` header.
     *   `/api/refineRecipe` (`refineRecipe.js`): Refines an existing recipe based on user input.
         *   Fetches the original recipe JSON and existing cost breakdown text from `async_tasks` using the `task_id`.
         *   Calls OpenAI (`gpt-3.5-turbo` or `gpt-4o`) with the original data and user request to generate a *combined* updated recipe and cost breakdown text.
@@ -84,7 +89,7 @@ The application is built using a combination of a static frontend, serverless fu
 ### A. Generate New Recipe
 
 1.  **Frontend:** User enters ingredients/idea, selects model (`gpt-4o` or `gpt-4o-mini`), clicks "Generate".
-2.  **Frontend (`js/views/generateView.js`):** Calls `apiService.generateRecipe`.
+2.  **Frontend (`js/views/generateView.js`):** Calls `apiService.generateRecipe` (passing user idea as `ingredients`, selected `model`, and hardcoded `type='broodje'`).
 3.  **Netlify Function (`/api/generateRecipe`):**
     *   Calls OpenAI API with the user's prompt and selected model (via `lib/openaiClient.js`).
     *   Receives recipe JSON from OpenAI.
@@ -168,14 +173,52 @@ Ensure the following are configured correctly:
 
 ## 4. Potential Improvements / Areas for Review
 
-*   **Consolidate Platform:** (Done) Migrated `generateRecipe` from GCF to Netlify Functions.
-*   **Eliminate Redundancy:** (Done) Removed `recipes` table, `calculateCost` GCF, and Cloud Scheduler Job.
-*   **Standardize Key Usage:** (Done) Reviewed `/api/getRecipes` and updated it to use the Service Role Key for consistency. Backend functions now consistently use `lib/supabaseClient.js` which utilizes the Service Role Key.
-*   **Share Helper Code:** (Done) Created `lib/` directory within `netlify/functions/`. Moved common helpers like `parseQuantityAndUnit`, `normalizeUnit`, `getConvertedQuantity` to `lib/costUtils.js`. Added `lib/openaiClient.js` and `lib/supabaseClient.js` for centralized client initialization. Helpers are imported where needed.
-*   **Optimize AI Calls & Costs:** Review if the default model for generation/refinement (`gpt-4o-mini`?) is optimal. Consider fine-tuning prompts or exploring model choices further.
-*   **Enhance Error Handling & Logging:** Implement more consistent error response formats across API functions and ensure logs capture sufficient context for debugging.
-*   **Refine Unit Conversion:** Expand the `getConvertedQuantity` helper with more conversions (e.g., approximate volume units like 'el'/'tl' to 'ml') if needed based on common recipe formats.
-*   **Improve Code Structure:** (Done) `frontend/script.js` has been refactored into multiple modules within `frontend/js/`. (Ongoing) Backend functions `getCostBreakdown.js` (~288 lines) and `lib/costUtils.js` (~357 lines) are larger and could be reviewed for further modularization.
-*   **Investigate `generate.js`:** (New) The file `netlify/functions/generate.js` appears duplicative of `generateRecipe.js` but is referenced in some comments. Confirm which is correct/active and remove the unused file to avoid confusion.
-*   **Investigate `get-processed-recipe.js`:** (New) The function `netlify/functions/get-processed-recipe.js` exists but isn't called by the frontend. Determine its purpose; document or remove it.
-*   **Document New APIs:** (Done) Added documentation for ingredient management (`/api/*Ingredient`) and `/api/clearRecipes` endpoints and workflows.
+This section tracks areas identified for potential improvement or further investigation.
+
+**Completed:**
+
+*   **Consolidate Platform:** Migrated frontend and backend functions to Netlify.
+*   **Eliminate Redundancy:** Removed separate Express server.
+*   **Share Helper Code:** Centralized Supabase and OpenAI client initialization in `netlify/functions/lib`.
+*   **Document New APIs:** Added documentation for `generateRecipe`, `refineRecipe`, `clearRecipes`, `getCostBreakdown`.
+
+**Active / To-Do:**
+
+*   **Standardize Client/Key Usage:**
+    *   **Ensure consistent use of shared clients:** Verify *all* backend functions correctly import and use the factory functions from `lib/supabaseClient.js` (i.e., `getServiceClient()`) and the client from `lib/openaiClient.js`. The recent fix in `getIngredients.js` highlighted the importance of correct pathing and calling the factory function.
+    *   Review key usage: Double-check no keys (Anon vs. Service Role) are used inappropriately across functions.
+
+*   **Optimize AI Calls & Costs:**
+    *   Review prompt engineering for efficiency and quality across `generateRecipe`, `refineRecipe`, and `getCostBreakdown`.
+    *   Consider caching identical requests (e.g., generating a recipe for the exact same ingredients multiple times) to reduce redundant OpenAI calls.
+    *   Evaluate if cheaper/faster OpenAI models are sufficient for certain tasks.
+
+*   **Enhance Error Handling & Logging:**
+    *   Implement more robust and consistent error handling in *all* Netlify functions (e.g., detailed logging, standardized error response formats).
+    *   Improve frontend error display: Show user-friendly messages for API errors (like the "Failed to fetch ingredients" issue) instead of just console logs. Catch errors from `apiService.js` gracefully in the view modules.
+
+*   **Improve Code Structure & Readability:**
+    *   Refactor large files: `getCostBreakdown.js` and its utility `costUtils.js` could potentially be broken down further for better maintainability.
+    *   Review Vanilla JS structure: Evaluate if the current view/service separation is sufficient or if a slightly more structured approach (e.g., simple state management pattern) could simplify UI updates and data flow, especially with added complexity.
+
+*   **Address Function Timeouts (Netlify Free Tier):**
+    *   The 10-second timeout remains a constraint for potentially long-running operations (complex recipe generation, future image generation).
+    *   **Mitigation for Existing Features:** Optimize existing AI calls as much as possible.
+    *   **Strategy for New Features (Image Generation):** Image generation *cannot* reliably run within the 10s limit on Netlify free tier. The proposed solution is to use **Google Cloud Functions (GCF)** triggered asynchronously.
+        *   The frontend would call a quick Netlify function to initiate the GCF task.
+        *   The GCF would perform the image generation and store the result (e.g., in Supabase).
+        *   The frontend would poll or use a mechanism (like Supabase Realtime) to know when the image is ready.
+
+*   **UI/UX Enhancements:**
+    *   **Improve Loading States:** Implement more engaging visual feedback during API calls (recipe generation, cost breakdown, refinement). Instead of simple text, consider a small animation related to making a sandwich (e.g., ingredients appearing sequentially, a progress bar filling up).
+    *   **Dedicated Image Generation Button:** Add a button (e.g., "Visualiseer Broodje") that appears *after* a recipe is successfully generated. Clicking this button would trigger the asynchronous image generation process (likely via GCF).
+    *   **Ingredient Image Display:** Implement the idea for showing ingredient images during cost breakdown:
+        *   Add an `image_url` (nullable) column to the `ingredients` table in Supabase.
+        *   Modify the "Add Ingredient" / "Update Ingredient" backend logic: When an ingredient is added/updated, asynchronously trigger a GCF to generate an image using the ingredient name as a prompt (using the OpenAI Image API - gpt-4o or dall-e-3). Store the resulting image URL in the new `image_url` column. Use a placeholder/default if generation fails.
+        *   Modify the `getCostBreakdown` logic (or frontend rendering) to fetch and display these images alongside ingredient names. If an image URL exists, use it; otherwise, show a default/placeholder.
+
+*   **Input Validation:** Add stricter input validation on both the frontend (before sending API requests) and backend (within Netlify functions) to prevent errors and ensure data integrity.
+
+*   **Investigate Unused/Redundant Code:**
+    *   Review `generate.js`: Is this function still needed or superseded by `generateRecipe.js`?
+    *   Review `get-processed-recipe.js`: Purpose and necessity unclear. Needs investigation.
