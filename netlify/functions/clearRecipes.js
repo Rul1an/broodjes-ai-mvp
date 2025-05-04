@@ -70,7 +70,8 @@ exports.handler = async function (event, context) {
             headers: { 'Content-Type': 'application/json' }
         };
     } catch (error) {
-        console.error('Error in clearRecipes function:', error.message);
+        // Log the full error object for better debugging
+        console.error('Error in clearRecipes function:', error);
 
         // Standard error structure for caught errors
         let statusCode = 500;

@@ -56,13 +56,21 @@ async function handleResponse(response) {
 
 // --- Exported API Functions ---
 
+// --- Recipes ---
+
 export async function generateRecipe(ingredients, model) {
     const response = await fetch(GENERATE_RECIPE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ingredients: ingredients, type: 'broodje', model: model })
     });
-    return handleResponse(response);
+    const result = await handleResponse(response);
+    try {
+        sessionStorage.removeItem('recipes'); // Invalidate cache
+    } catch (e) {
+        console.warn('Failed to remove recipes from sessionStorage:', e);
+    }
+    return result;
 }
 
 export async function getCostBreakdown(taskId) {
@@ -71,8 +79,27 @@ export async function getCostBreakdown(taskId) {
 }
 
 export async function getRecipes() {
+    const cacheKey = 'recipes';
+    try {
+        const cachedData = sessionStorage.getItem(cacheKey);
+        if (cachedData) {
+            console.log('Serving recipes from cache');
+            return JSON.parse(cachedData);
+        }
+    } catch (e) {
+        console.warn('Failed to read recipes from sessionStorage:', e);
+    }
+
+    console.log('Fetching recipes from API');
     const response = await fetch(GET_RECIPES_URL);
-    return handleResponse(response);
+    const data = await handleResponse(response);
+
+    try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(data));
+    } catch (e) {
+        console.warn('Failed to save recipes to sessionStorage:', e);
+    }
+    return data;
 }
 
 export async function refineRecipe(recipeId, refinementRequest) {
@@ -81,17 +108,50 @@ export async function refineRecipe(recipeId, refinementRequest) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipeId, refinementRequest })
     });
-    return handleResponse(response);
+    const result = await handleResponse(response);
+    try {
+        sessionStorage.removeItem('recipes'); // Invalidate cache
+    } catch (e) {
+        console.warn('Failed to remove recipes from sessionStorage:', e);
+    }
+    return result;
 }
 
 export async function clearAllRecipes() {
     const response = await fetch(CLEAR_RECIPES_URL, { method: 'POST' });
-    return handleResponse(response);
+    const result = await handleResponse(response);
+    try {
+        sessionStorage.removeItem('recipes'); // Invalidate cache
+    } catch (e) {
+        console.warn('Failed to remove recipes from sessionStorage:', e);
+    }
+    return result;
 }
 
+// --- Ingredients ---
+
 export async function getIngredients() {
+    const cacheKey = 'ingredients';
+    try {
+        const cachedData = sessionStorage.getItem(cacheKey);
+        if (cachedData) {
+            console.log('Serving ingredients from cache');
+            return JSON.parse(cachedData);
+        }
+    } catch (e) {
+        console.warn('Failed to read ingredients from sessionStorage:', e);
+    }
+
+    console.log('Fetching ingredients from API');
     const response = await fetch(GET_INGREDIENTS_URL);
-    return handleResponse(response);
+    const data = await handleResponse(response);
+
+    try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(data));
+    } catch (e) {
+        console.warn('Failed to save ingredients to sessionStorage:', e);
+    }
+    return data;
 }
 
 export async function addIngredient(name, unit, price_per_unit) {
@@ -100,16 +160,29 @@ export async function addIngredient(name, unit, price_per_unit) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, unit, price_per_unit })
     });
-    return handleResponse(response);
+    const result = await handleResponse(response);
+    try {
+        sessionStorage.removeItem('ingredients'); // Invalidate cache
+    } catch (e) {
+        console.warn('Failed to remove ingredients from sessionStorage:', e);
+    }
+    return result;
 }
 
 export async function deleteIngredient(ingredientId) {
     const response = await fetch(`${DELETE_INGREDIENT_URL}?id=${ingredientId}`, {
         method: 'DELETE'
     });
-    return handleResponse(response);
+    const result = await handleResponse(response);
+    try {
+        sessionStorage.removeItem('ingredients'); // Invalidate cache
+    } catch (e) {
+        console.warn('Failed to remove ingredients from sessionStorage:', e);
+    }
+    return result;
 }
 
 // Note: Update ingredient functionality was mentioned as an API endpoint
 // but not implemented in the original script's event handling.
+// If implemented, add sessionStorage.removeItem('ingredients');
 // export async function updateIngredient(id, data) { ... }

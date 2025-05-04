@@ -294,7 +294,8 @@ exports.handler = async function (event, context) {
 
         // --- ADDED Catch Block ---
     } catch (error) {
-        console.error('Error in getCostBreakdown function handler:', error.message);
+        // Log the full error object for better debugging
+        console.error('Error in getCostBreakdown function handler:', error);
 
         // Standard error structure for caught errors
         let statusCode = 500;

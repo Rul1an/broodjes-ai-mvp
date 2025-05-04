@@ -20,6 +20,9 @@ The application is built using a combination of a static frontend, serverless fu
         *   `js/views/ingredientView.js`: Handles displaying and managing ingredients.
     *   Hosting: Netlify Static Site Hosting
     *   Functionality: Handles user input, displays data, triggers backend operations via API calls organized in modules.
+    *   **Caching:** Gebruikt `sessionStorage` om de resultaten van `getIngredients` en `getRecipes` te cachen. Cache wordt automatisch geïnvalideerd bij relevante mutaties (toevoegen/verwijderen/genereren/refinen).
+    *   **Error Handling:** Vangt errors van `apiService` op, toont gebruikersvriendelijke meldingen via `uiUtils.displayErrorToast`.
+    *   **UI Feedback:** Gebruikt laadindicatoren (spinners) en schakelt knoppen uit tijdens API-calls.
 
 *   **Backend - Netlify Functions (`netlify/functions/`):**
     *   `/api/generateRecipe` (`generateRecipe.js`): Handles recipe generation requests.
@@ -212,7 +215,7 @@ This section tracks areas identified for potential improvement or further invest
         *   The frontend would poll or use a mechanism (like Supabase Realtime) to know when the image is ready.
 
 *   **UI/UX Enhancements:**
-    *   **(Next) Improve Loading/Feedback:** Replace text indicators with a visual spinner/animation via `uiUtils.js`. Ensure all action buttons have clear `disabled` states during API calls and provide brief visual success feedback (e.g., toast).
+    *   **(Done) Improve Loading/Feedback:** Replaced text indicators with a visual spinner. Ensured all action buttons use `setButtonLoading` for clear `disabled` states during API calls.
     *   **(Next - Optional) Implement Client-Side Ingredient Caching:** Modify `ingredientView.js` to use `sessionStorage` to cache the ingredient list, reducing API calls. Add a manual refresh button.
     *   **Dedicated Image Generation Button:** Add a button (e.g., "Visualiseer Broodje") that appears *after* a recipe is successfully generated. Clicking this button would trigger the asynchronous image generation process (likely via GCF).
     *   **Ingredient Image Display:** Implement the idea for showing ingredient images during cost breakdown:
@@ -226,3 +229,35 @@ This section tracks areas identified for potential improvement or further invest
 
 *   **Investigate Unused/Redundant Code:**
     *   **(Done)** Reviewed and removed `generate.js` and `get-processed-recipe.js`.
+
+## 5. Improvement Plan (Phased Approach - TEMP)
+
+This section outlines the planned steps for implementing improvements.
+
+**Fase 1: Fundamenten en Directe Gebruikerservaring (Completed)**
+
+*   **Stap 1: Standaardiseer Backend Error Responses (Done)**
+    *   Alle Netlify functions retourneren nu `{ error: { message, code, details } }`.
+*   **Stap 2: Implementeer Frontend Error Weergave (Done)**
+    *   `apiService.js` parseert de gestandaardiseerde error.
+    *   View modules gebruiken `uiUtils.displayErrorToast(errorPayload.message)`.
+*   **Stap 3: Verbeter UI Feedback (Loading & Knoppen) (Done)**
+    *   Loading indicators vervangen door spinners.
+    *   Actieknoppen gebruiken `setButtonLoading` voor disabled states.
+
+**Fase 2: Optimalisaties en Refactoring**
+
+*   **Stap 4: Implementeer Client-Side Caching voor Ingrediënten (Done)**
+    *   **Doel:** Voorkom onnodig ophalen van de ingrediëntenlijst.
+    *   **Actie:** Gebruik `sessionStorage` in `apiService.js` voor ingrediënten en recepten.
+*   **Stap 5: Verbeter Backend Logging (Done)**
+    *   **Doel:** Betere debugging mogelijkheden.
+    *   **Actie:** Zorg dat alle `catch` blokken in backend functies de volledige error (incl. stack trace) loggen via `console.error(error);`.
+*   **Stap 6: Voeg Frontend Input Validatie toe (Next)**
+    *   **Doel:** Voorkom ongeldige API calls.
+    *   **Actie:** Voeg checks toe in frontend (bv. prijs = nummer) en overweeg backend validatie voor generate/refine.
+
+**Fase 3: Geavanceerde Optimalisatie & Features (Later)**
+
+*   **Stap 9: Implementeer OpenAI Request Caching (Server-side)**
+*   **Stap 10: Implementeer Verdere UI/UX Features** (Visualiseer Broodje knop, Ingrediënt Afbeeldingen via GCF, etc.)

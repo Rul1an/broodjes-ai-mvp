@@ -106,7 +106,8 @@ exports.handler = async function (event, context) {
         };
 
     } catch (error) {
-        console.error('Error in addIngredient function handler:', error.message);
+        // Log the full error object for better debugging
+        console.error('Error in addIngredient function handler:', error);
 
         // Standard error structure for caught errors
         let statusCode = 500;

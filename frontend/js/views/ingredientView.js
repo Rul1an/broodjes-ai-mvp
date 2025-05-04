@@ -34,16 +34,21 @@ function renderIngredientsTable(ingredients) {
     }
 }
 
-// Function to fetch and display ingredients
+// Function to fetch and display ingredients (simplified, relies on apiService cache)
 export async function loadIngredients() {
     if (!ingredientTableBody) {
         console.error("Ingredient table body not found!");
         return;
     }
+
     ui.showIngredientsLoading();
+
     try {
-        const data = await api.getIngredients();
-        renderIngredientsTable(data.ingredients);
+        console.log("Fetching ingredients (using apiService cache)...");
+        const data = await api.getIngredients(); // apiService handles caching
+        const ingredients = data.ingredients || [];
+        renderIngredientsTable(ingredients);
+
     } catch (errorPayload) {
         const errorMessage = errorPayload?.message || 'Onbekende fout bij ophalen ingrediënten.';
         console.error('Error fetching ingredients:', errorPayload);
@@ -69,7 +74,7 @@ const handleAddIngredient = async () => {
 
     try {
         const data = await api.addIngredient(name, unit, parseFloat(price));
-        await loadIngredients();
+        await loadIngredients(); // Reload the list (will use cache if appropriate)
 
     } catch (errorPayload) {
         const errorMessage = errorPayload?.message || 'Onbekende fout bij toevoegen.';
