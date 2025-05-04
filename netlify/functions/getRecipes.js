@@ -21,7 +21,7 @@ exports.handler = async function (event, context) {
     // Fetch COMPLETED TASKS, including the recipe JSON and estimated cost
     const { data: tasks, error } = await supabase
       .from('async_tasks')
-      .select('task_id, idea, recipe, created_at, estimated_cost')
+      .select('task_id, idea, recipe, created_at, estimated_cost, cost_breakdown')
       .eq('status', 'completed')
       .not('recipe', 'is', null)
       .order('created_at', { ascending: false });
@@ -37,12 +37,17 @@ exports.handler = async function (event, context) {
       idea: task.idea,
       generated_recipe: task.recipe,
       created_at: task.created_at,
-      estimated_total_cost: task.estimated_cost
+      estimated_total_cost: task.estimated_cost,
+      cost_breakdown: task.cost_breakdown
     }));
 
     // Return the fetched tasks/recipes
     return {
       statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ recipes: recipesForFrontend }),
     };
   } catch (error) {
