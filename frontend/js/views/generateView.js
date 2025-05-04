@@ -6,6 +6,7 @@ import { displayCostBreakdown, displayRecipe } from './recipeListView.js';
 // DOM Elements for the Generate View
 let generateBtn;
 let ideaInput;
+let typeInput;
 let modelSelect;
 let recipeOutput; // The general output area
 
@@ -27,10 +28,15 @@ const fetchCostBreakdown = async (taskId) => {
 // Function to handle the generate recipe button click
 const handleGenerateRecipe = async () => {
     const idea = ideaInput.value.trim();
+    const type = typeInput.value.trim();
     const selectedModel = modelSelect.value;
 
     if (!idea) {
         alert('Voer een idee of ingrediënten in.');
+        return;
+    }
+    if (!type) {
+        alert('Voer het type gerecht in (bv. Lunch, Snack).');
         return;
     }
 
@@ -39,7 +45,7 @@ const handleGenerateRecipe = async () => {
     recipeOutput.innerHTML = ''; // Clear previous output
 
     try {
-        const result = await api.generateRecipe(idea, selectedModel);
+        const result = await api.generateRecipe(idea, type, selectedModel);
 
         if (!result || !result.recipe || !result.taskId) {
             throw new Error('Ongeldig antwoord ontvangen van de server.');
@@ -65,10 +71,11 @@ export function setupGenerateView() {
     console.log("Setting up Generate View...");
     generateBtn = document.getElementById('generate-btn');
     ideaInput = document.getElementById('broodje-idee');
+    typeInput = document.getElementById('gerecht-type');
     modelSelect = document.getElementById('model-select');
     recipeOutput = document.getElementById('recept-output'); // General output area
 
-    if (!generateBtn || !ideaInput || !modelSelect || !recipeOutput) {
+    if (!generateBtn || !ideaInput || !typeInput || !modelSelect || !recipeOutput) {
         console.error("Required elements for Generate View not found!");
         return;
     }
