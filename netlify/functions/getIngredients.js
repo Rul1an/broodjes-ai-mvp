@@ -1,7 +1,7 @@
 // Remove the direct require for createClient
 // const { createClient } = require('@supabase/supabase-js');
-// Require the shared client instead using the correct relative path
-const supabase = require('./lib/supabaseClient');
+// Require the client factory functions
+const { getServiceClient } = require('./lib/supabaseClient');
 
 exports.handler = async function (event, context) {
     if (event.httpMethod !== 'GET') {
@@ -9,19 +9,20 @@ exports.handler = async function (event, context) {
     }
 
     try {
-        // Remove the logic for getting URL/Anon key and creating a local client
-        /*
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+        // Get the actual Supabase client using the service key
+        const supabase = getServiceClient();
 
-        if (!supabaseUrl || !supabaseAnonKey) {
-            console.error('Supabase URL or Anon Key missing');
-            return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error' }) };
+        // Check if the client was initialized successfully
+        if (!supabase) {
+            console.error('Failed to initialize Supabase service client.');
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ error: 'Server configuration error', details: 'Supabase client could not be initialized.' }),
+                headers: { 'Content-Type': 'application/json' }
+            };
         }
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
-        */
 
-        // The supabase client is now required from the shared library
+        // Now use the obtained client
         const { data: ingredients, error } = await supabase
             .from('ingredients')
             .select('*') // Select all columns for ingredients
