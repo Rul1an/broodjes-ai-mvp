@@ -62,6 +62,7 @@ The application is built using a combination of a static frontend, serverless fu
     *   `/api/updateIngredient` (`updateIngredient.js`): Updates an existing ingredient in the `ingredients` table. Requires Service Role Key.
     *   `/api/deleteIngredient` (`deleteIngredient.js`): Deletes an ingredient from the `ingredients` table. Requires Service Role Key.
     *   `/api/clearRecipes` (`clearRecipes.js`): Deletes all records from the `async_tasks` table. Requires Service Role Key.
+    *   `/api/triggerIngredientImageGeneration` (`triggerIngredientImageGeneration.js`): Receives an `ingredient_id`, fetches the name, and asynchronously triggers the `generateIngredientImage` GCF.
 
 *   **Backend - Shared Libraries (`netlify/functions/lib/`):**
     *   `openaiClient.js`: Utility to initialize and provide the OpenAI API client.
@@ -74,16 +75,18 @@ The application is built using a combination of a static frontend, serverless fu
 *   **Backend - Google Cloud Functions (GCF):**
     *   ~~`gcf-generate-recipe/index.js` (Deployed as `generateRecipe`):~~ (Removed - Logic migrated to Netlify Function `/api/generateRecipe`)
     *   ~~`gcf-calculate-cost/index.js` (Deployed as `calculateCost`):~~ (Removed - Functionality covered by `/api/getCostBreakdown`)
+    *   `generateIngredientImage` (`google-cloud-functions/generate-ingredient-image/index.js`): Deployed in GCP. Receives `ingredient_id` and `ingredient_name` via HTTP POST. Calls OpenAI Image API to generate an image. Updates the corresponding `ingredients` record in Supabase with the `image_url`.
 
 *   **Database (Supabase - PostgreSQL):**
     *   `async_tasks` table: Primary table tracking recipe generation. Stores `task_id` (UUID), initial idea (`prompt`), status (`status`), generated recipe JSON (`recipe`), final cost breakdown text (`cost_breakdown`), cost calculation type (`cost_calculation_type`), timestamps (`created_at`, `updated_at`), and potentially a separate total cost (`estimated_cost`).
     *   ~~`recipes` table:~~ (Removed - Redundant)
-    *   `ingredients` table: Stores ingredient names and their prices (e.g., price per unit/kg) used by `/api/getCostBreakdown` and managed via ingredient API functions.
+    *   `ingredients` table: Stores ingredient names, prices, units, and **image_url** (nullable URL for generated image).
+    *   `openai_cache` table: Caches OpenAI API responses based on a hash of the request to reduce costs and latency.
 
 *   **External Services:**
-    *   **OpenAI API:** Used for recipe generation, refinement, and cost estimation fallbacks. Keys are stored as environment variables. Accessed via `lib/openaiClient.js`.
-    *   **Netlify:** Hosts the frontend and **all** backend API Netlify Functions. Manages environment variables for these functions.
-    *   ~~**Google Cloud Platform (GCP):**~~ (Removed - No longer used for functions or scheduler in this project)
+    *   **OpenAI API:** Used for recipe generation, refinement, cost estimation fallbacks, and **ingredient image generation** (DALL-E 3 / GPT-4o).
+    *   **Netlify:** Hosts the frontend and Netlify functions.
+    *   **Google Cloud Platform (GCP):** Hosts the `generateIngredientImage` Cloud Function.
 
 *   **Source Control & CI/CD:**
     *   **GitHub (`Rul1an/broodjes-ai-mvp`):** Hosts the codebase.
@@ -106,14 +109,13 @@ The application is built using a combination of a static frontend, serverless fu
     *   Calls `recipeListView.displayRecipe` to show the formatted recipe.
     *   Calls `fetchCostBreakdown` (within `generateView.js`) which calls `apiService.getCostBreakdown`.
 5.  **Netlify Function (`/api/getCostBreakdown`):**
-    *   Fetches recipe JSON from `async_tasks` using `task_id` (via `lib/supabaseClient.js`).
-    *   Fetches prices from `ingredients` table (via `lib/supabaseClient.js`).
-    *   Performs calculation using DB prices for known ingredients and falls back to AI estimation for unknown/failed ingredients (potentially using a hybrid approach, logic in `lib/costUtils.js`).
-    *   Saves the final breakdown text and calculation type (e.g., 'db', 'ai', 'hybrid') to `async_tasks.cost_breakdown` (via `lib/supabaseClient.js`).
-    *   Returns `{ breakdown: <text>, calculationType: <type> }` to the frontend.
+    *   Fetches recipe JSON and ingredient data (including `image_url`).
+    *   Performs cost calculation (DB/AI/Hybrid).
+    *   Formats breakdown text, **including `<img>` tags for ingredients with an `image_url`**.
+    *   Saves and returns the breakdown.
 6.  **Frontend (`js/views/generateView.js` via `apiService.js`):**
-    *   Receives the breakdown response.
-    *   Calls `recipeListView.displayCostBreakdown` to update the UI.
+    *   Receives breakdown response.
+    *   Calls `recipeListView.displayCostBreakdown` which renders the HTML (including images) using `marked.parse`.
 
 ### B. View Saved Recipes
 
@@ -145,17 +147,28 @@ The application is built using a combination of a static frontend, serverless fu
 
 ### D. Manage Ingredients (New)
 
-1.  **Frontend (`js/views/navigation.js`):** User clicks "Ingrediënten Beheer" nav button, `setActiveView('view-ingredients')` is called.
-2.  **Frontend (`js/views/navigation.js`):** Calls `ingredientView.loadIngredients`.
-3.  **Frontend (`js/views/ingredientView.js`):**
-    *   Calls `apiService.getIngredients` to fetch and display ingredients.
-    *   User interacts with form/buttons:
-        *   Add: Calls `handleAddIngredient` which calls `apiService.addIngredient`.
-        *   Delete: Event listener calls `handleDeleteIngredient` which calls `apiService.deleteIngredient`.
-4.  **Netlify Functions (`/api/*Ingredient`)**:
-    *   Perform the requested CRUD operation on the `ingredients` table using `lib/supabaseClient.js`.
-    *   Return success/failure status or updated data to the frontend.
-5.  **Frontend (`js/views/ingredientView.js`):** Updates the displayed ingredient list/form feedback via `apiService.js` response.
+1.  **Frontend:** User navigates to ingredient management.
+2.  **Frontend (`ingredientView.js`):** Loads and displays ingredients.
+3.  **User Action (Add/Update):**
+    *   User fills form, clicks Add/Update.
+    *   Frontend (`ingredientView.js`) calls `/api/addIngredient` or `/api/updateIngredient`.
+4.  **Netlify Function (`/api/addIngredient` or `/api/updateIngredient`):**
+    *   Performs validation.
+    *   Inserts/Updates ingredient in Supabase `ingredients` table.
+    *   **Asynchronously calls `/api/triggerIngredientImageGeneration`** with the ingredient ID (fire-and-forget).
+    *   Returns success/failure to frontend.
+5.  **Netlify Function (`/api/triggerIngredientImageGeneration`):**
+    *   Fetches ingredient name using ID.
+    *   Calls the `generateIngredientImage` GCF via HTTP POST.
+6.  **GCF (`generateIngredientImage`):**
+    *   Receives request.
+    *   Calls OpenAI Image API.
+    *   Updates the `image_url` in the Supabase `ingredients` table.
+7.  **User Action (Delete):**
+    *   User clicks Delete.
+    *   Frontend (`ingredientView.js`) calls `/api/deleteIngredient`.
+8.  **Netlify Function (`/api/deleteIngredient`):** Deletes ingredient from Supabase.
+9.  **Frontend:** Updates UI based on success/failure.
 
 ### E. Clear All Saved Recipes (New)
 
@@ -218,13 +231,10 @@ This section tracks areas identified for potential improvement or further invest
         *   The frontend would poll or use a mechanism (like Supabase Realtime) to know when the image is ready.
 
 *   **UI/UX Enhancements:**
-    *   **(Done) Improve Loading/Feedback:** Replaced text indicators with a visual spinner. Ensured all action buttons use `setButtonLoading` for clear `disabled` states during API calls.
-    *   **(Next - Optional) Implement Client-Side Ingredient Caching:** Modify `ingredientView.js` to use `sessionStorage` to cache the ingredient list, reducing API calls. Add a manual refresh button.
-    *   **Dedicated Image Generation Button:** Add a button (e.g., "Visualiseer Broodje") that appears *after* a recipe is successfully generated. Clicking this button would trigger the asynchronous image generation process (likely via GCF).
-    *   **Ingredient Image Display:** Implement the idea for showing ingredient images during cost breakdown:
-        *   Add an `image_url` (nullable) column to the `ingredients` table in Supabase.
-        *   Modify the "Add Ingredient" / "Update Ingredient" backend logic: When an ingredient is added/updated, asynchronously trigger a GCF to generate an image using the ingredient name as a prompt (using the OpenAI Image API - gpt-4o or dall-e-3). Store the resulting image URL in the new `image_url` column. Use a placeholder/default if generation fails.
-        *   Modify the `getCostBreakdown` logic (or frontend rendering) to fetch and display these images alongside ingredient names. If an image URL exists, use it; otherwise, show a default/placeholder.
+    *   **(Done)** Improve Loading/Feedback.
+    *   **(Partially Done) Ingredient Image Display:** Backend logic fetches/includes image URLs. GCF generates images asynchronously upon add/update. Frontend renders the included HTML. *Needs testing & potentially placeholder/error state handling in UI.*
+    *   **(Next)** Dedicated "Visualiseer Broodje" button and associated GCF/workflow.
+    *   **(Next)** Replace `confirm()` with custom modal.
 
 *   **Input Validation:**
     *   **(Done)** Reviewed backend functions (`add`, `update`, `delete` ingredient); validation for required fields and types is present.
@@ -271,4 +281,6 @@ This section outlines the planned steps for implementing improvements.
 *   **Stap 9: Implementeer OpenAI Request Caching (Server-side) (Done)**
     *   **Doel:** Verminder onnodige OpenAI calls en kosten.
     *   **Actie:** Database caching geïmplementeerd via `cacheUtils.js` en `openai_cache` tabel. Functies `generateRecipe`, `refineRecipe`, en AI helpers in `aiCostUtils` checken nu de cache en slaan nieuwe resultaten op.
-*   **Stap 10: Implementeer Verdere UI/UX Features (Next)** (Visualiseer Broodje knop, Ingrediënt Afbeeldingen via GCF, etc.)
+*   **Stap 10: Implementeer Verdere UI/UX Features (In Progress)**
+    *   **Doel:** Verbeter visuele feedback en voeg beeldgeneratie toe.
+    *   **Actie:** Setup GCF, Netlify trigger, DB changes, and backend logic for asynchronous ingredient image generation. Frontend rendering aangepast (impliciet via HTML). *Volgende: Testen, evt. placeholders, "Visualiseer Broodje" knop.*

@@ -39,7 +39,7 @@ const handleGenerateRecipe = async () => {
     recipeOutput.innerHTML = ''; // Clear previous output
 
     try {
-        const result = await api.generateRecipe(idea, 'broodje', selectedModel);
+        const result = await api.generateRecipe(idea, selectedModel);
 
         if (!result || !result.recipe || !result.taskId) {
             throw new Error('Ongeldig antwoord ontvangen van de server.');
