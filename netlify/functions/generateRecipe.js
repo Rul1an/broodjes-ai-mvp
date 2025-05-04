@@ -139,7 +139,10 @@ exports.handler = async (event, context) => {
         console.log('Sending success response:', finalResponse);
         return {
             statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*' }, // Add CORS header
+            headers: {
+                'Access-Control-Allow-Origin': '*', // Add CORS header
+                'Content-Type': 'application/json' // Add Content-Type header
+            },
             body: JSON.stringify(finalResponse),
         };
         // --- End Success ---
