@@ -6,6 +6,7 @@ const { getRefinePrompt } = require('./promptTemplates.js');
 // Keep local helper function for now, unless moved to costUtils
 
 exports.handler = async function (event, context) {
+    console.log('--- refineRecipe handler started ---'); // Test edit
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }
@@ -128,26 +129,43 @@ exports.handler = async function (event, context) {
         // ---------------------------
 
     } catch (error) {
-        console.error('Error in refineRecipe function handler:', error.message);
-        // Check if it's an OpenAI specific error vs other errors
+        // Verbeterde Logging
+        const errorTimestamp = new Date().toISOString();
+        // Gebruik recipeId in logs, aangezien taskId hier niet direct beschikbaar is
+        console.error(`[${errorTimestamp}] Error in refineRecipe handler for recipeId ${recipeId}:`, error.message);
+        console.error(`[${errorTimestamp}] Full Error:`, error); // Log full error object
+
+        // Gestandaardiseerde Error Response
         let statusCode = 500;
-        let clientErrorMessage = 'Failed to refine recipe due to an internal server error.';
+        let errorCode = "INTERNAL_ERROR";
+        let userMessage = 'Failed to refine recipe due to an internal server error.';
 
-        // Example: More specific error handling for OpenAI if needed
-        // if (error instanceof OpenAI.APIError) { ... }
-
-        // Pass AI communication errors more directly if they occur
-        if (error.message.includes('Failed to get valid refined recipe text from AI')) {
-            clientErrorMessage = error.message;
-            statusCode = 502; // Bad Gateway might be appropriate if AI failed
+        // Specifieke error types
+        if (error.message?.includes('Database error') || error.message?.includes('Supabase')) {
+            errorCode = "DATABASE_ERROR";
+            userMessage = 'A database error occurred while processing the refinement.';
+        } else if (error.message?.includes('Failed to get valid refined recipe text from AI') || error.message?.includes('OpenAI')) {
+            statusCode = 502; // Bad Gateway for external service failure
+            errorCode = "AI_REFINEMENT_FAILED";
+            userMessage = 'Error communicating with AI service during refinement.';
+        } else if (error.message?.includes('not found')) { // Catch errors from the initial task fetch
+            statusCode = 404;
+            errorCode = "NOT_FOUND";
+            userMessage = `Recipe task with ID ${recipeId} not found.`;
         }
-
-        const fullErrorDetails = error.response ? JSON.stringify(error.response.data) : error.stack;
-        console.error('Full error details:', fullErrorDetails);
+        // Add more specific checks if needed
 
         return {
             statusCode: statusCode,
-            body: JSON.stringify({ error: clientErrorMessage }),
+            headers: { 'Access-Control-Allow-Origin': '*' }, // Ensure CORS header
+            body: JSON.stringify({
+                error: {
+                    message: userMessage,
+                    code: errorCode,
+                    details: error.message // Include original message as detail
+                },
+                recipeId: recipeId // Include recipeId for context
+            }),
         };
     }
 };
