@@ -46,10 +46,34 @@ exports.handler = async function (event, context) {
       body: JSON.stringify({ recipes: recipesForFrontend }),
     };
   } catch (error) {
-    console.error('Error in getRecipes function:', error);
+    // Verbeterde Logging
+    const errorTimestamp = new Date().toISOString();
+    console.error(`[${errorTimestamp}] Error in getRecipes handler:`, error.message);
+    console.error(`[${errorTimestamp}] Full Error:`, error); // Log full error object
+
+    // Gestandaardiseerde Error Response
+    let statusCode = 500;
+    let errorCode = "INTERNAL_ERROR";
+    let userMessage = 'Failed to retrieve recipes due to an internal server error.';
+
+    // Specifieke error types (voornamelijk DB hier)
+    if (error.message?.includes('Database error') || error.message?.includes('Supabase')) {
+      errorCode = "DATABASE_ERROR";
+      userMessage = 'A database error occurred while retrieving recipes.';
+    }
+    // Add more specific checks if needed
+
     return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to fetch recipes' }),
+      statusCode: statusCode,
+      headers: { 'Access-Control-Allow-Origin': '*' }, // Ensure CORS header
+      body: JSON.stringify({
+        error: {
+          message: userMessage,
+          code: errorCode,
+          details: error.message // Include original message as detail
+        }
+        // Geen taskId nodig hier, want het is een lijst-request
+      }),
     };
   }
 };

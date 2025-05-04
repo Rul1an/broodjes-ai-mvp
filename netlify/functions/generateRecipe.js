@@ -169,19 +169,56 @@ exports.handler = async (event, context) => {
         // --- End Success ---
 
     } catch (error) {
-        console.error(`Error processing generateRecipe request:`, error);
-        // Optionally attempt to update task status to 'error' if taskId was generated before failure
+        // Verbeterde Logging
+        const errorTimestamp = new Date().toISOString();
+        console.error(`[${errorTimestamp}] Error in generateRecipe handler:`, error.message);
+        console.error(`[${errorTimestamp}] Task ID at time of error:`, taskId); // Log taskId if available
+        console.error(`[${errorTimestamp}] Full Error:`, error); // Log full error object for stack trace etc.
+
+        // Poging tot update status (bestaande logica)
         if (taskId) {
             try {
-                await supabase.from('async_tasks').update({ status: 'error', error_message: error.message }).eq('task_id', taskId);
+                // Gebruik getServiceClient hier ook, want supabase variabele is mogelijk niet gezet in de catch scope
+                const dbClient = getServiceClient();
+                if (dbClient) {
+                    await dbClient.from('async_tasks').update({ status: 'error', error_message: error.message }).eq('task_id', taskId);
+                } else {
+                    console.error(`[${errorTimestamp}] Could not update task ${taskId} status: Supabase client unavailable.`);
+                }
             } catch (updateErr) {
-                console.error(`Failed to update task ${taskId} status to error:`, updateErr);
+                console.error(`[${errorTimestamp}] Failed to update task ${taskId} status to error:`, updateErr);
             }
         }
+
+        // Gestandaardiseerde Error Response
+        let statusCode = 500;
+        let errorCode = "INTERNAL_ERROR";
+        let userMessage = 'Failed to generate recipe due to an internal server error.';
+
+        if (error.message?.includes('OpenAI') || error.message?.includes('AI')) {
+            statusCode = 502; // Bad Gateway for external service failure
+            errorCode = "AI_GENERATION_FAILED";
+            userMessage = 'Error communicating with AI service.';
+        } else if (error.message?.includes('Database error') || error.message?.includes('Supabase')) {
+            errorCode = "DATABASE_ERROR";
+            userMessage = 'A database error occurred while processing the recipe.';
+        } else if (error.message?.includes('Invalid JSON') || error.message?.includes('parse')) {
+            statusCode = 400; // Bad Request if input parsing failed early (though unlikely here)
+            errorCode = "INVALID_INPUT";
+            userMessage = 'Invalid data received.';
+        }
+
         return {
-            statusCode: 500,
+            statusCode: statusCode,
             headers: { 'Access-Control-Allow-Origin': '*' },
-            body: JSON.stringify({ error: 'Failed to generate recipe.', details: error.message, taskId: taskId }),
+            body: JSON.stringify({
+                error: {
+                    message: userMessage,
+                    code: errorCode,
+                    details: error.message // Include original message as detail
+                },
+                taskId: taskId // Include taskId if available
+            }),
         };
     }
 };
