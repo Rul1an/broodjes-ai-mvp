@@ -1,3 +1,4 @@
+import { marked } from "https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js";
 import * as api from '../apiService.js';
 import * as ui from '../uiUtils.js';
 import * as utils from '../utils.js';
@@ -26,10 +27,10 @@ export function displayRecipe(data) {
     }
 
     const formattedRecipe = utils.formatRecipeJsonToText(data.recipe);
-    // Include a placeholder for the cost breakdown, identifiable by taskId
+    // Use marked.parse and render in a div, not pre
     recipeOutputElement.innerHTML = `
         <h2>${data.recipe.title || 'Nieuw Recept'}</h2>
-        <pre>${formattedRecipe}</pre>
+        <div class="recipe-content">${marked.parse(formattedRecipe)}</div>
         <div id="cost-breakdown-${data.taskId}" class="cost-breakdown-section">
             <p><i>Kosten worden berekend...</i></p>
         </div>
@@ -43,6 +44,9 @@ export function displayRecipe(data) {
  */
 export function displayCostBreakdown(taskId, breakdownData) {
     console.log(`Displaying cost breakdown for ${taskId}:`, breakdownData);
+    // --- Debugging Log ---
+    console.log(`Received breakdownData for task ${taskId}:`, JSON.stringify(breakdownData, null, 2));
+    // --- End Debugging Log ---
     const costElement = document.getElementById(`cost-breakdown-${taskId}`);
 
     if (!costElement) {
@@ -55,10 +59,10 @@ export function displayCostBreakdown(taskId, breakdownData) {
     if (breakdownData.error) {
         costElement.innerHTML = `<p style="color: red;">Fout bij kostenberekening: ${breakdownData.error}</p>`;
     } else if (breakdownData.breakdown) {
-        // Basic formatting, could be enhanced
+        // Use marked.parse and render in a div, not pre
         costElement.innerHTML = `
             <h3>Kosten Opbouw (${breakdownData.calculationType || 'N/A'})</h3>
-            <pre>${breakdownData.breakdown}</pre>
+            <div class="cost-content">${marked.parse(breakdownData.breakdown)}</div>
         `;
     } else {
         costElement.innerHTML = '<p><i>Kon kosten opbouw niet laden.</i></p>';
@@ -89,10 +93,9 @@ const handleRefineRecipe = async (button) => {
 
     try {
         const result = await api.refineRecipe(recipeId, refinementRequest);
-        refinedOutput.textContent = result.recipe; // Display the raw refined text
-        // Optionally extract and display cost again?
-        // const cost = utils.extractEstimatedCost(result.recipe);
-        // console.log("Estimated cost from refined text:", cost);
+        // Parse refined recipe text with marked
+        refinedOutput.innerHTML = marked.parse(result.recipe);
+        refinedOutput.style.color = ''; // Reset color if it was red from error
         refineInput.value = ''; // Clear input
 
     } catch (error) {
@@ -143,21 +146,24 @@ export async function loadRecipes() {
                 const formattedRecipeText = parsedRecipe ? utils.formatRecipeJsonToText(parsedRecipe) : (recipe.recipe || 'Geen recept data.');
                 const costBreakdownText = recipe.cost_breakdown || 'Geen kosten opbouw beschikbaar.';
 
+                // Parse cost breakdown text with marked
+                const parsedCostBreakdownHtml = costBreakdownText ? marked.parse(costBreakdownText) : '<i>Kosten niet beschikbaar.</i>';
+
                 listItem.innerHTML = `
                     <b>${displayTitle}</b>
                     <br>
                     <small>Opgeslagen op: ${new Date(recipe.created_at).toLocaleString('nl-NL')}</small>
                     <div id="cost-breakdown-${recipe.task_id}" class="cost-breakdown-section" style="margin-top: 5px; border-top: 1px solid #eee; padding-top: 5px;">
-                       ${costBreakdownText ? `<pre>${costBreakdownText}</pre>` : '<i>Kosten niet beschikbaar.</i>'}
+                       ${parsedCostBreakdownHtml}
                     </div>
                     <details style="margin-top: 10px;">
                         <summary>Bekijk Origineel / Verfijn</summary>
-                        <pre class="original-recipe-text">${formattedRecipeText}</pre>
+                        <div class="original-recipe-content">${marked.parse(formattedRecipeText)}</div>
                         <div class="refine-section" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
                             <input type="text" class="refine-input" placeholder="Vraag om verfijning (bv. maak het pittiger)" style="width: 70%; margin-right: 5px;">
                             <button class="refine-btn">Verfijn Recept</button>
                             <div class="refine-loading" style="display: none; font-style: italic; color: #888;">Verfijnen...</div>
-                            <pre class="refined-recipe-output" style="margin-top: 5px; background-color: #eef;"></pre>
+                            <div class="refined-recipe-output" style="margin-top: 5px; background-color: #eef;"></div>
                         </div>
                     </details>
                     `;
