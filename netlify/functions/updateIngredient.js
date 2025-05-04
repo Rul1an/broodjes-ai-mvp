@@ -1,4 +1,5 @@
-const { createClient } = require('@supabase/supabase-js');
+// const { createClient } = require('@supabase/supabase-js');
+const { getServiceClient } = require('./lib/supabaseClient');
 
 exports.handler = async function (event, context) {
     if (event.httpMethod !== 'PUT') {
@@ -64,6 +65,7 @@ exports.handler = async function (event, context) {
         // -----------------------------------
 
         // --- Supabase Client Setup ---
+        /*
         const supabaseUrl = process.env.SUPABASE_URL;
         const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
@@ -72,7 +74,15 @@ exports.handler = async function (event, context) {
             return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error' }) };
         }
         const supabase = createClient(supabaseUrl, supabaseAnonKey);
+        */
         // ---------------------------
+
+        // Get the Supabase client using the shared factory (Service Role Key)
+        const supabase = getServiceClient();
+        if (!supabase) {
+            console.error('updateIngredient: Failed to initialize Supabase service client.');
+            return { statusCode: 500, body: JSON.stringify({ error: 'Server configuration error (DB)' }) };
+        }
 
         // --- Database Operation ---
         const { data, error: dbError } = await supabase
