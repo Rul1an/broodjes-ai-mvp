@@ -169,6 +169,8 @@ ul#recepten-lijst {
     /* Limit height */
     overflow-y: auto;
     /* Add scroll if content exceeds max-height */
+    font-size: 0.9em;
+    /* Make font smaller */
 }
 
 /* Adjust headings within details */
