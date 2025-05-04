@@ -136,10 +136,32 @@ exports.handler = async function (event, context) {
         }
 
         // Success response (no change needed)
+        const updatedIngredient = data;
         console.log(`Successfully updated ingredient with ID: ${id}`);
+
+        // --- Trigger GCF Image Generation Asynchronously ---
+        if (process.env.GCF_IMAGE_GENERATION_URL) {
+            try {
+                console.log(`Triggering async image generation for updated ingredient: ${updatedIngredient.id}`);
+                // Fire and forget - don't await
+                fetch('/api/triggerIngredientImageGeneration', { // Assuming relative path works
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ingredient_id: updatedIngredient.id })
+                }).catch(triggerError => {
+                    console.error(`Failed to trigger image generation for ingredient ${updatedIngredient.id}:`, triggerError);
+                });
+            } catch (e) {
+                console.error(`Error initiating trigger for image generation (ingredient ${updatedIngredient.id}):`, e);
+            }
+        } else {
+            console.warn('GCF_IMAGE_GENERATION_URL not set, skipping image generation trigger.');
+        }
+        // --- End Trigger ---
+
         return {
             statusCode: 200,
-            body: JSON.stringify({ ingredient: data }),
+            body: JSON.stringify({ ingredient: updatedIngredient }),
             headers: { 'Content-Type': 'application/json' }
         };
 

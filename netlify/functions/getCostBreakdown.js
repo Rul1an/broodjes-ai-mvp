@@ -30,7 +30,9 @@ function _formatDbOnlyBreakdown(calculatedItems, totalDbCost) {
     console.log(`getCostBreakdown: DB calculation successful. Total: ${finalTotalCost}`);
     let finalBreakdownText = `## Geschatte Kosten Opbouw (Database):\n`;
     calculatedItems.forEach(item => {
-        finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
+        // Add image tag if URL exists
+        const imageTag = item.image_url ? `<img src="${item.image_url}" alt="${item.name}" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 5px;">` : '';
+        finalBreakdownText += `- ${imageTag}${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
     });
     finalBreakdownText += `- **Totaal Geschat:** €${finalTotalCost.toFixed(2)}\n`;
     return { finalBreakdownText, calculationType, finalTotalCost };
@@ -66,7 +68,9 @@ async function _handleHybridBreakdown(calculatedItems, failedItems, totalDbCost)
         finalBreakdownText = `## Geschatte Kosten Opbouw (Hybride - DB + AI):\n`;
         finalBreakdownText += `### Van Database:\n`;
         calculatedItems.forEach(item => {
-            finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
+            // Add image tag if URL exists
+            const imageTag = item.image_url ? `<img src="${item.image_url}" alt="${item.name}" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 5px;">` : '';
+            finalBreakdownText += `- ${imageTag}${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
         });
         finalBreakdownText += `### Geschat door AI (niet in DB):\n`;
         failedItems.forEach(item => {
@@ -80,7 +84,9 @@ async function _handleHybridBreakdown(calculatedItems, failedItems, totalDbCost)
         finalBreakdownText = `## Geschatte Kosten Opbouw (Deels Database - AI Mislukt):\n`;
         finalBreakdownText += `### Van Database:\n`;
         calculatedItems.forEach(item => {
-            finalBreakdownText += `- ${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
+            // Add image tag if URL exists
+            const imageTag = item.image_url ? `<img src="${item.image_url}" alt="${item.name}" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 5px;">` : '';
+            finalBreakdownText += `- ${imageTag}${item.name} (${item.quantity_string}): €${item.cost.toFixed(2)}\n`;
         });
         finalBreakdownText += `### Niet Berekenbaar via AI:\n`;
         failedItems.forEach(item => {
@@ -188,19 +194,19 @@ exports.handler = async function (event, context) {
             };
         }
 
-        // 5. Fetch all ingredients prices
-        console.log('getCostBreakdown: Fetching all ingredient prices...');
+        // 5. Fetch all ingredients prices (and image URLs)
+        console.log('getCostBreakdown: Fetching all ingredient prices and image URLs...');
         const { data: ingredientsData, error: ingredientsError } = await supabase
             .from('ingredients')
-            .select('name, price_per_unit, unit');
+            .select('name, price_per_unit, unit, image_url'); // Include image_url
 
         if (ingredientsError) {
             console.error('getCostBreakdown: Error fetching ingredients:', ingredientsError);
-            // Throw specific error for the catch block
             throw new Error(`Database error fetching ingredients: ${ingredientsError.message}`);
         }
-        const ingredientPriceMap = new Map(ingredientsData.map(ing => [ing.name.toLowerCase(), ing]));
-        console.log(`getCostBreakdown: Fetched ${ingredientPriceMap.size} ingredients.`);
+        // Store the whole ingredient object in the map
+        const ingredientInfoMap = new Map(ingredientsData.map(ing => [ing.name.toLowerCase(), ing]));
+        console.log(`getCostBreakdown: Fetched ${ingredientInfoMap.size} ingredients.`);
 
         // 6. Calculate Initial Breakdown (DB Attempt)
         let totalDbCost = 0;
@@ -226,14 +232,15 @@ exports.handler = async function (event, context) {
             }
             const quantityUnit = normalizeUnit(quantityUnitRaw); // Normalize recipe unit
 
-            // Find ingredient in DB
-            const dbIngredient = ingredientPriceMap.get(ingredientName);
-            if (!dbIngredient) {
+            // Find ingredient in DB map
+            const dbIngredientInfo = ingredientInfoMap.get(ingredientName);
+            if (!dbIngredientInfo) {
                 failureReason = `Ingredient not found in DB`;
                 failedItems.push({ ...itemInfo, reason: failureReason }); continue;
             }
-            const dbUnit = normalizeUnit(dbIngredient.unit); // Normalize DB unit
-            const dbPricePerUnit = dbIngredient.price_per_unit;
+            const dbUnit = normalizeUnit(dbIngredientInfo.unit);
+            const dbPricePerUnit = dbIngredientInfo.price_per_unit;
+            const dbImageUrl = dbIngredientInfo.image_url; // Get image URL
 
             let valueToUse = quantityValue;
 
@@ -241,7 +248,7 @@ exports.handler = async function (event, context) {
             if (quantityUnit !== dbUnit) {
                 valueToUse = getConvertedQuantity(quantityValue, quantityUnit, dbUnit);
                 if (isNaN(valueToUse)) {
-                    failureReason = `Incompatible units or conversion failed (Recipe: '${quantityUnitRaw}', DB: '${dbIngredient.unit}')`;
+                    failureReason = `Incompatible units or conversion failed (Recipe: '${quantityUnitRaw}', DB: '${dbIngredientInfo.unit}')`;
                     failedItems.push({ ...itemInfo, reason: failureReason }); continue;
                 }
                 console.log(`Converted ${quantityValue} ${quantityUnitRaw} to ${valueToUse} ${dbUnit} for ${ingredientName}`);
@@ -256,7 +263,7 @@ exports.handler = async function (event, context) {
 
             // Success for this ingredient
             const calculatedCost = parseFloat(ingredientCost.toFixed(4));
-            calculatedItems.push({ ...itemInfo, cost: calculatedCost, unit: dbUnit, quantity_value: valueToUse }); // Note: unit shown is DB unit now
+            calculatedItems.push({ ...itemInfo, cost: calculatedCost, unit: dbUnit, quantity_value: valueToUse, image_url: dbImageUrl });
             totalDbCost += calculatedCost;
         }
         console.log(`getCostBreakdown: Finished initial calculation. DB calculated: ${calculatedItems.length}, Failed: ${failedItems.length}`);

@@ -1,0 +1,14 @@
+{
+    "name": "generate-ingredient-image",
+    "version": "1.0.0",
+    "description": "GCF to generate an image for a given ingredient name and update Supabase.",
+    "main": "index.js",
+    "dependencies": {
+        "@google-cloud/functions-framework": "^3.0.0",
+        "@supabase/supabase-js": "^2.0.0",
+        "openai": "^4.0.0"
+    },
+    "scripts": {
+        "start": "functions-framework --target=generateIngredientImage"
+    }
+}
