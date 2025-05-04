@@ -1,30 +1,6 @@
 const { getServiceClient } = require('./lib/supabaseClient');
 const { getOpenAIClient } = require('./lib/openaiClient');
 
-// Retrieve secrets from environment variables
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SERVICE_ROLE_KEY; // Use Service Key
-const openaiApiKey = process.env.OPENAI_API_KEY;
-
-// Initialize OpenAI client
-let openai;
-if (openaiApiKey) {
-    openai = new OpenAI({ apiKey: openaiApiKey });
-    console.log('generateRecipe (Netlify): OpenAI client initialized.');
-} else {
-    console.error('CRITICAL: Missing OPENAI_API_KEY in Netlify environment.');
-    // The function will likely fail later if OpenAI is needed
-}
-
-// Initialize Supabase client
-let supabase;
-if (supabaseUrl && supabaseServiceKey) {
-    supabase = createClient(supabaseUrl, supabaseServiceKey);
-    console.log('generateRecipe (Netlify): Supabase client initialized with Service Key.');
-} else {
-    console.error('CRITICAL: Missing SUPABASE_URL or SERVICE_ROLE_KEY in Netlify environment.');
-}
-
 exports.handler = async (event, context) => {
     // Allow OPTIONS requests for CORS preflight
     if (event.httpMethod === 'OPTIONS') {
@@ -45,7 +21,7 @@ exports.handler = async (event, context) => {
         return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }
 
-    // Check if clients initialized properly
+    // Check if clients initialized properly via shared modules
     const supabase = getServiceClient();
     const openai = getOpenAIClient();
     if (!supabase || !openai) {
