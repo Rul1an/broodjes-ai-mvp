@@ -16,6 +16,10 @@
 [functions."get-processed-recipe"]
   external_node_modules = ["@supabase/supabase-js"]
 
+# Configuration specific for triggerIngredientImageGeneration
+[functions."triggerIngredientImageGeneration"]
+  memory = 512 # Set memory to 512MB
+
 # Keep the redirects rule (This is needed for frontend calls like /api/generate-start)
 [[redirects]]
   from = "/api/*"
