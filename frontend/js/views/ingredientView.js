@@ -44,9 +44,11 @@ export async function loadIngredients() {
     try {
         const data = await api.getIngredients();
         renderIngredientsTable(data.ingredients);
-    } catch (error) {
-        console.error('Error fetching ingredients:', error);
-        ingredientTableBody.innerHTML = `<tr><td colspan="4" style="color: red;">Kon ingrediënten niet laden: ${error.message}</td></tr>`;
+    } catch (errorPayload) {
+        const errorMessage = errorPayload?.message || 'Onbekende fout bij ophalen ingrediënten.';
+        console.error('Error fetching ingredients:', errorPayload);
+        renderIngredientsTable([]);
+        ui.displayErrorToast(errorMessage);
     } finally {
         ui.hideIngredientsLoading();
     }
@@ -64,25 +66,15 @@ const handleAddIngredient = async () => {
     }
 
     ui.setButtonLoading(addIngredientBtn, true, 'Toevoegen...');
-    ingredientFeedback.style.display = 'none'; // Hide previous feedback
 
     try {
-        const data = await api.addIngredient(name, unit, parseFloat(price)); // Ensure price is a number
-        ingredientFeedback.textContent = `Ingrediënt '${data.ingredient.name}' succesvol toegevoegd!`;
-        ingredientFeedback.style.color = 'green';
-        ingredientFeedback.style.display = 'block';
+        const data = await api.addIngredient(name, unit, parseFloat(price));
+        await loadIngredients();
 
-        // Clear form and reload ingredients
-        ingredientNameInput.value = '';
-        ingredientUnitInput.value = '';
-        ingredientPriceInput.value = '';
-        await loadIngredients(); // Refresh the list
-
-    } catch (error) {
-        console.error('Error adding ingredient:', error);
-        ingredientFeedback.textContent = `Fout bij toevoegen: ${error.message}`;
-        ingredientFeedback.style.color = 'red';
-        ingredientFeedback.style.display = 'block';
+    } catch (errorPayload) {
+        const errorMessage = errorPayload?.message || 'Onbekende fout bij toevoegen.';
+        console.error('Error adding ingredient:', errorPayload);
+        ui.displayErrorToast(errorMessage);
     } finally {
         ui.setButtonLoading(addIngredientBtn, false);
     }
@@ -96,31 +88,23 @@ const handleDeleteIngredient = async (ingredientId, button) => {
         return;
     }
 
-    // Disable the specific delete button
     ui.setButtonLoading(button, true, '...');
 
     try {
         await api.deleteIngredient(ingredientId);
-        // Remove the row from the table directly for instant feedback
         const row = button.closest('tr');
         if (row) {
             row.remove();
         } else {
-            // Fallback to reloading if row not found (shouldn't happen)
             await loadIngredients();
         }
-        // Optionally show feedback message
-        // ingredientFeedback.textContent = `Ingrediënt ${ingredientId} verwijderd.`;
-        // ingredientFeedback.style.color = 'green';
-        // ingredientFeedback.style.display = 'block';
 
-    } catch (error) {
-        console.error(`Error deleting ingredient ${ingredientId}:`, error);
-        alert(`Kon ingrediënt niet verwijderen: ${error.message}`);
-        // Re-enable button on error
+    } catch (errorPayload) {
+        const errorMessage = errorPayload?.message || 'Onbekende fout bij verwijderen.';
+        console.error(`Error deleting ingredient ${ingredientId}:`, errorPayload);
+        ui.displayErrorToast(errorMessage);
         ui.setButtonLoading(button, false);
     }
-    // No finally block needed for button state if row is removed on success
 };
 
 // --- Initialization ---

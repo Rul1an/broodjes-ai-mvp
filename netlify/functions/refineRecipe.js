@@ -22,6 +22,7 @@ exports.handler = async function (event, context) {
     }
 
     let body;
+    let recipeId = null; // Define recipeId outside try block for catch scope
 
     try {
         // --- Input Parsing and Validation ---
@@ -35,12 +36,20 @@ exports.handler = async function (event, context) {
             return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON format in request body.' }) };
         }
 
-        const { recipeId, refinementRequest } = body;
+        // Assign to the outer scope variable
+        // const { recipeId: parsedRecipeId, refinementRequest } = body;
+        const parsedRecipeId = body.recipeId;
+        const refinementRequest = body.refinementRequest;
 
-        // Validate recipeId
-        if (!recipeId) {
-            return { statusCode: 400, body: JSON.stringify({ error: 'Missing required parameter: recipeId (should be task_id)' }) };
+        if (!parsedRecipeId) {
+            // Standard error for missing recipeId
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: { message: 'Missing required parameter: recipeId (should be task_id)', code: 'VALIDATION_ERROR', details: 'Field: recipeId' } }),
+                headers: { 'Content-Type': 'application/json' }
+            };
         }
+        recipeId = parsedRecipeId; // Assign to outer scope variable after validation
 
         // Validate refinementRequest
         if (!refinementRequest || typeof refinementRequest !== 'string' || refinementRequest.trim().length === 0) {
@@ -50,7 +59,7 @@ exports.handler = async function (event, context) {
         // -----------------------------------
 
         // --- Fetch original recipe and breakdown from async_tasks ---
-        console.log(`refineRecipe: Fetching task ${recipeId}`);
+        console.log(`refineRecipe: Fetching task ${recipeId}`); // Now recipeId is accessible
         const { data: taskData, error: taskError } = await supabase
             .from('async_tasks')
             .select('recipe, cost_breakdown') // Fetch recipe JSON and existing breakdown text
@@ -131,40 +140,40 @@ exports.handler = async function (event, context) {
     } catch (error) {
         // Verbeterde Logging
         const errorTimestamp = new Date().toISOString();
-        // Gebruik recipeId in logs, aangezien taskId hier niet direct beschikbaar is
+        // Now recipeId is accessible here (if assigned in try block)
         console.error(`[${errorTimestamp}] Error in refineRecipe handler for recipeId ${recipeId}:`, error.message);
         console.error(`[${errorTimestamp}] Full Error:`, error); // Log full error object
 
-        // Gestandaardiseerde Error Response
+        // Standard error structure for caught errors
         let statusCode = 500;
         let errorCode = "INTERNAL_ERROR";
         let userMessage = 'Failed to refine recipe due to an internal server error.';
 
-        // Specifieke error types
-        if (error.message?.includes('Database error') || error.message?.includes('Supabase')) {
+        if (error.message?.startsWith('Database error')) {
             errorCode = "DATABASE_ERROR";
             userMessage = 'A database error occurred while processing the refinement.';
         } else if (error.message?.includes('Failed to get valid refined recipe text from AI') || error.message?.includes('OpenAI')) {
             statusCode = 502; // Bad Gateway for external service failure
             errorCode = "AI_REFINEMENT_FAILED";
             userMessage = 'Error communicating with AI service during refinement.';
-        } else if (error.message?.includes('not found')) { // Catch errors from the initial task fetch
+        } else if (error.message?.includes('not found')) {
             statusCode = 404;
             errorCode = "NOT_FOUND";
-            userMessage = `Recipe task with ID ${recipeId} not found.`;
+            // Use recipeId from outer scope
+            userMessage = `Recipe task with ID ${recipeId || 'unknown'} not found.`;
         }
         // Add more specific checks if needed
 
         return {
             statusCode: statusCode,
-            headers: { 'Access-Control-Allow-Origin': '*' }, // Ensure CORS header
+            headers: { 'Access-Control-Allow-Origin': '*' },
             body: JSON.stringify({
                 error: {
                     message: userMessage,
                     code: errorCode,
-                    details: error.message // Include original message as detail
-                },
-                recipeId: recipeId // Include recipeId for context
+                    details: error.message,
+                    recipeId: recipeId // Include recipeId if available
+                }
             }),
         };
     }

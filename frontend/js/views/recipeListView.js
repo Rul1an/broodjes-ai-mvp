@@ -90,15 +90,14 @@ const handleRefineRecipe = async (button) => {
 
     try {
         const result = await api.refineRecipe(recipeId, refinementRequest);
-        // Parse refined recipe text with marked
         refinedOutput.innerHTML = marked.parse(result.recipe);
-        refinedOutput.style.color = ''; // Reset color if it was red from error
-        refineInput.value = ''; // Clear input
+        refinedOutput.style.color = '';
+        refineInput.value = '';
 
-    } catch (error) {
-        console.error(`Error refining recipe ${recipeId}:`, error);
-        refinedOutput.textContent = `Fout bij verfijnen: ${error.message}`;
-        refinedOutput.style.color = 'red';
+    } catch (errorPayload) {
+        const errorMessage = errorPayload?.message || 'Onbekende fout bij verfijnen.';
+        console.error(`Error refining recipe ${recipeId}:`, errorPayload);
+        ui.displayErrorToast(errorMessage);
     } finally {
         ui.setButtonLoading(button, false);
         refineLoading.style.display = 'none';
@@ -177,9 +176,11 @@ export async function loadRecipes() {
             recipeListElement.innerHTML = '<li>Nog geen recepten opgeslagen.</li>';
         }
 
-    } catch (error) {
-        console.error('Error fetching recipes:', error);
-        recipeListElement.innerHTML = `<li>Kon recepten niet laden: ${error.message}</li>`;
+    } catch (errorPayload) {
+        const errorMessage = errorPayload?.message || 'Onbekende fout bij ophalen recepten.';
+        console.error('Error fetching recipes:', errorPayload);
+        recipeListElement.innerHTML = '<li>Kon recepten niet laden.</li>';
+        ui.displayErrorToast(errorMessage);
     } finally {
         ui.hideListLoading();
     }
@@ -196,15 +197,15 @@ const handleClearAllRecipes = async () => {
 
     try {
         await api.clearAllRecipes();
-        alert('Alle recepten zijn succesvol verwijderd.');
         loadRecipes(); // Reload the (now empty) list
 
-    } catch (error) {
-        console.error('Error clearing recipes:', error);
-        alert(`Kon recepten niet verwijderen: ${error.message}`);
+    } catch (errorPayload) {
+        const errorMessage = errorPayload?.message || 'Onbekende fout bij verwijderen recepten.';
+        console.error('Error clearing recipes:', errorPayload);
+        ui.displayErrorToast(errorMessage);
     } finally {
         ui.setButtonLoading(clearRecipesBtn, false);
-        ui.hideListLoading(); // Hide list loading specifically
+        ui.hideListLoading();
     }
 };
 

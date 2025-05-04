@@ -194,11 +194,13 @@ This section tracks areas identified for potential improvement or further invest
     *   Evaluate if cheaper/faster OpenAI models are sufficient for certain tasks.
 
 *   **Enhance Error Handling & Logging:**
-    *   Implement more robust and consistent error handling in *all* Netlify functions (e.g., detailed logging, standardized error response formats).
-    *   Improve frontend error display: Show user-friendly messages for API errors (like the "Failed to fetch ingredients" issue) instead of just console logs. Catch errors from `apiService.js` gracefully in the view modules.
+    *   **(Done) Standardize Backend Error Responses:** All Netlify functions now return a consistent JSON structure (`{ error: { message, code, details } }`) upon failure, including appropriate HTTP status codes.
+    *   **(Next) Implement Frontend Error Display:** Modify `apiService.js` to parse the standardized error response. Implement a user-friendly display mechanism (e.g., toast notification via `uiUtils.js`) in the view modules (`generateView`, `ingredientView`, `recipeListView`) to show the `error.message` to the user instead of just logging to the console.
+    *   **(Backend) Improve Logging:** Ensure all `catch` blocks log the *full* error object (including stack trace) server-side for better debugging.
 
 *   **Improve Code Structure & Readability:**
-    *   Refactor large files: `getCostBreakdown.js` and its utility `costUtils.js` could potentially be broken down further for better maintainability.
+    *   **(Next - Optional/Larger) Refactor Backend Utilities (`costUtils.js`):** Split the large `costUtils.js` into smaller, more focused modules (e.g., `unitConversion.js`, `quantityParsing.js`, `aiCostHelpers.js`) and update `require` statements in `getCostBreakdown.js`.
+    *   **(Next - Optional/Larger) Refactor Backend Main Logic (`getCostBreakdown.js`):** Improve readability by extracting the logic for DB-only, AI-fallback, and Hybrid scenarios into separate internal helper functions within `getCostBreakdown.js`.
     *   Review Vanilla JS structure: Evaluate if the current view/service separation is sufficient or if a slightly more structured approach (e.g., simple state management pattern) could simplify UI updates and data flow, especially with added complexity.
 
 *   **Address Function Timeouts (Netlify Free Tier):**
@@ -210,7 +212,8 @@ This section tracks areas identified for potential improvement or further invest
         *   The frontend would poll or use a mechanism (like Supabase Realtime) to know when the image is ready.
 
 *   **UI/UX Enhancements:**
-    *   **Improve Loading States:** Implement more engaging visual feedback during API calls (recipe generation, cost breakdown, refinement). Instead of simple text, consider a small animation related to making a sandwich (e.g., ingredients appearing sequentially, a progress bar filling up).
+    *   **(Next) Improve Loading/Feedback:** Replace text indicators with a visual spinner/animation via `uiUtils.js`. Ensure all action buttons have clear `disabled` states during API calls and provide brief visual success feedback (e.g., toast).
+    *   **(Next - Optional) Implement Client-Side Ingredient Caching:** Modify `ingredientView.js` to use `sessionStorage` to cache the ingredient list, reducing API calls. Add a manual refresh button.
     *   **Dedicated Image Generation Button:** Add a button (e.g., "Visualiseer Broodje") that appears *after* a recipe is successfully generated. Clicking this button would trigger the asynchronous image generation process (likely via GCF).
     *   **Ingredient Image Display:** Implement the idea for showing ingredient images during cost breakdown:
         *   Add an `image_url` (nullable) column to the `ingredients` table in Supabase.
@@ -220,5 +223,4 @@ This section tracks areas identified for potential improvement or further invest
 *   **Input Validation:** Add stricter input validation on both the frontend (before sending API requests) and backend (within Netlify functions) to prevent errors and ensure data integrity.
 
 *   **Investigate Unused/Redundant Code:**
-    *   Review `generate.js`: Is this function still needed or superseded by `generateRecipe.js`?
-    *   Review `get-processed-recipe.js`: Purpose and necessity unclear. Needs investigation.
+    *   **(Done)** Reviewed and removed `generate.js` and `get-processed-recipe.js`.

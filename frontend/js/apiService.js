@@ -9,29 +9,48 @@ const REFINE_RECIPE_URL = '/api/refineRecipe';
 const CLEAR_RECIPES_URL = '/api/clearRecipes';
 const GET_COST_BREAKDOWN_URL = '/api/getCostBreakdown';
 
-// Helper function for handling fetch responses
+// Updated helper function for handling fetch responses
 async function handleResponse(response) {
     if (!response.ok) {
-        let errorData = { message: `HTTP error! status: ${response.status}` };
+        let errorPayload = { // Default error payload
+            message: `HTTP error! Status: ${response.status}`,
+            code: 'HTTP_ERROR',
+            details: `URL: ${response.url}`
+        };
         try {
-            // Try to parse error response from backend
-            const backendError = await response.json();
-            errorData.message = backendError.error || backendError.message || errorData.message;
-            errorData.details = backendError; // Include full backend error if available
+            // Try to parse the standardized error response from backend
+            const backendErrorData = await response.json();
+            if (backendErrorData && backendErrorData.error && typeof backendErrorData.error === 'object') {
+                // Use the standardized structure if available
+                errorPayload = {
+                    message: backendErrorData.error.message || errorPayload.message,
+                    code: backendErrorData.error.code || 'BACKEND_ERROR',
+                    details: backendErrorData.error.details || errorPayload.details
+                    // Include other fields like taskId or ingredientId if needed later
+                };
+            } else if (backendErrorData && backendErrorData.error) {
+                // Fallback if backendError.error is just a string
+                errorPayload.message = backendErrorData.error;
+            }
         } catch (e) {
-            // Ignore if response is not JSON or parsing fails
+            // Ignore if response is not JSON or parsing fails, keep default payload
+            console.warn('Could not parse error response body as JSON.');
         }
-        const error = new Error(errorData.message);
-        error.details = errorData.details;
-        error.status = response.status;
-        throw error;
+
+        // Create a custom error object or just throw the payload
+        // Throwing the payload allows the caller to access code/details easily
+        console.error('API Error Payload:', errorPayload); // Log the structured error
+        throw errorPayload; // Throw the structured error object
     }
-    // Check if response has content before parsing JSON
+
+    // Handle successful responses (unchanged)
     const contentType = response.headers.get("content-type");
+    if (response.status === 204) { // Handle No Content specifically
+        return null; // Or return true, depending on how the caller expects it
+    }
     if (contentType && contentType.indexOf("application/json") !== -1) {
         return await response.json();
     }
-    // Return text or handle other content types if necessary
     return await response.text();
 }
 
@@ -67,15 +86,7 @@ export async function refineRecipe(recipeId, refinementRequest) {
 
 export async function clearAllRecipes() {
     const response = await fetch(CLEAR_RECIPES_URL, { method: 'POST' });
-    // Doesn't return JSON, handle appropriately if needed
-    if (!response.ok) {
-        let errorData = { message: `HTTP error! status: ${response.status}` };
-        try { const backendError = await response.json(); errorData.message = backendError.error || errorData.message; } catch (e) { }
-        const error = new Error(errorData.message);
-        error.status = response.status;
-        throw error;
-    }
-    return true; // Indicate success
+    return handleResponse(response);
 }
 
 export async function getIngredients() {
@@ -93,12 +104,9 @@ export async function addIngredient(name, unit, price_per_unit) {
 }
 
 export async function deleteIngredient(ingredientId) {
-    const response = await fetch(DELETE_INGREDIENT_URL, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: ingredientId })
+    const response = await fetch(`${DELETE_INGREDIENT_URL}?id=${ingredientId}`, {
+        method: 'DELETE'
     });
-    // Assuming DELETE returns success/failure info in JSON
     return handleResponse(response);
 }
 

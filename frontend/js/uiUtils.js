@@ -51,3 +51,10 @@ export function setButtonLoading(buttonElement, isLoading, loadingText = 'Proces
         delete buttonElement.dataset.originalText; // Clean up
     }
 }
+
+// Utility to display error messages to the user (simple alert for now)
+export function displayErrorToast(message) {
+    console.error("Displaying Error: ", message); // Keep logging the error
+    // Replace this with a more sophisticated toast/notification library later
+    alert(`Fout: ${message}`);
+}

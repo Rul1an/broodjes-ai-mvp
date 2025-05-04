@@ -12,15 +12,15 @@ let recipeOutput; // The general output area
 // Function to fetch cost breakdown AFTER recipe generation
 const fetchCostBreakdown = async (taskId) => {
     console.log(`Fetching cost breakdown for taskId: ${taskId}`);
-    // Display placeholder/loading state in the specific cost area if needed
-    // (Currently, displayCostBreakdown handles the output area)
+    // Display placeholder/loading state if needed
     try {
         const breakdownData = await api.getCostBreakdown(taskId);
         displayCostBreakdown(taskId, breakdownData);
-    } catch (error) {
-        console.error(`Error fetching cost breakdown for ${taskId}:`, error);
-        // Display error in the specific cost area
-        displayCostBreakdown(taskId, { error: `Kon kosten niet ophalen: ${error.message}` });
+    } catch (errorPayload) {
+        // Use the message from the structured error object
+        const errorMessage = errorPayload?.message || 'Onbekende fout bij ophalen kosten.';
+        console.error(`Error fetching cost breakdown for ${taskId}:`, errorPayload); // Log the full payload
+        displayCostBreakdown(taskId, { error: `Fout: ${errorMessage}` });
     }
 };
 
@@ -39,22 +39,20 @@ const handleGenerateRecipe = async () => {
     recipeOutput.innerHTML = ''; // Clear previous output
 
     try {
-        // Pass hardcoded 'broodje' as type to the api service
         const result = await api.generateRecipe(idea, 'broodje', selectedModel);
 
         if (!result || !result.recipe || !result.taskId) {
             throw new Error('Ongeldig antwoord ontvangen van de server.');
         }
 
-        // Display the main recipe content
-        displayRecipe(result); // Pass the whole result object
-
-        // Immediately trigger cost breakdown fetch
+        displayRecipe(result);
         await fetchCostBreakdown(result.taskId);
 
-    } catch (error) {
-        console.error('Error generating recipe:', error);
-        recipeOutput.innerHTML = `<p style="color: red;">Fout bij genereren: ${error.message}</p>`;
+    } catch (errorPayload) {
+        // Use the message from the structured error object
+        const errorMessage = errorPayload?.message || 'Onbekende fout bij genereren.';
+        console.error('Error generating recipe:', errorPayload); // Log the full payload
+        ui.displayErrorToast(errorMessage);
     } finally {
         ui.hideLoading();
         ui.setButtonLoading(generateBtn, false);
