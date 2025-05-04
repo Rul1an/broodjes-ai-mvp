@@ -6,7 +6,7 @@ const { getRefinePrompt } = require('./promptTemplates.js');
 // Keep local helper function for now, unless moved to costUtils
 
 exports.handler = async function (event, context) {
-    console.log('--- refineRecipe handler started ---'); // Test edit
+    // console.log('--- refineRecipe handler started ---'); // Test edit -> Removed
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }

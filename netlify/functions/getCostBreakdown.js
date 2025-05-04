@@ -245,12 +245,43 @@ exports.handler = async function (event, context) {
         };
 
     } catch (error) {
-        console.error('Error in getCostBreakdown handler:', error.message);
-        const fullErrorDetails = error.response ? JSON.stringify(error.response.data) : error.stack;
-        console.error('Full error details:', fullErrorDetails);
+        // Verbeterde Logging
+        const errorTimestamp = new Date().toISOString();
+        console.error(`[${errorTimestamp}] Error in getCostBreakdown handler for task ${taskId}:`, error.message);
+        console.error(`[${errorTimestamp}] Full Error:`, error); // Log full error object
+
+        // Gestandaardiseerde Error Response
+        let statusCode = 500;
+        let errorCode = "INTERNAL_ERROR";
+        let userMessage = 'Failed to calculate cost breakdown due to an internal server error.';
+
+        // Specifieke error types
+        if (error.message?.includes('Database error') || error.message?.includes('Supabase')) {
+            errorCode = "DATABASE_ERROR";
+            userMessage = 'A database error occurred while fetching data.';
+        } else if (error.message?.includes('Failed to parse recipe JSON')) {
+            errorCode = "PARSE_ERROR";
+            userMessage = 'Could not read the recipe data needed for calculation.';
+            statusCode = 500; // Internal error, likely data corruption
+        } else if (error.message?.includes('OpenAI') || error.message?.includes('AI')) {
+            // This might occur during AI fallback helpers called within the try block
+            statusCode = 502; // Bad Gateway for external service failure
+            errorCode = "AI_FALLBACK_ERROR";
+            userMessage = 'Error communicating with AI service during cost estimation fallback.';
+        }
+        // Add more specific checks if needed based on potential error sources
+
         return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'Internal server error during cost breakdown calculation.' }),
+            statusCode: statusCode,
+            headers: { 'Access-Control-Allow-Origin': '*' }, // Ensure CORS header
+            body: JSON.stringify({
+                error: {
+                    message: userMessage,
+                    code: errorCode,
+                    details: error.message // Include original message as detail
+                },
+                taskId: taskId // Include taskId for context
+            }),
         };
     }
 };
