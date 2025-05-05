@@ -78,8 +78,8 @@ const triggerGcfImageGeneration = async (ingredientId, ingredientName) => {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                ingredientId: ingredientId,
-                ingredientName: ingredientName,
+                ingredient_id: ingredientId,
+                ingredient_name: ingredientName,
             }),
         });
 
