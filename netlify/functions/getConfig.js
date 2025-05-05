@@ -1,11 +1,12 @@
 exports.handler = async (event, context) => {
-    const gcfUrl = process.env.GCF_IMAGE_GENERATION_URL;
+    const gcfImageUrl = process.env.GCF_IMAGE_GENERATION_URL;
+    const gcfGenerateBroodjeUrl = process.env.GCF_GENERATE_BROODJE_URL;
 
-    if (!gcfUrl) {
-        console.error('[getConfig] Missing GCF_IMAGE_GENERATION_URL environment variable.');
+    if (!gcfImageUrl || !gcfGenerateBroodjeUrl) {
+        console.error('[getConfig] Missing GCF_IMAGE_GENERATION_URL or GCF_GENERATE_BROODJE_URL environment variable.');
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: 'Server configuration error: GCF URL not configured.' })
+            body: JSON.stringify({ error: 'Server configuration error: Required GCF URLs not configured.' })
         };
     }
 
@@ -14,6 +15,9 @@ exports.handler = async (event, context) => {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ gcfImageUrl: gcfUrl })
+        body: JSON.stringify({
+            gcfImageUrl: gcfImageUrl,
+            gcfGenerateBroodjeUrl: gcfGenerateBroodjeUrl
+        })
     };
 };

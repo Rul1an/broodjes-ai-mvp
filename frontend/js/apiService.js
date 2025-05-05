@@ -77,18 +77,36 @@ export async function getConfig() {
 // --- Recipes ---
 
 export async function generateRecipe(ingredients, model) {
-    const response = await fetch(GENERATE_RECIPE_URL, {
+    // Get the GCF URL (assuming it's stored globally after fetchAppConfig runs)
+    const gcfUrl = window.appConfig?.gcfGenerateBroodjeUrl;
+    if (!gcfUrl) {
+        console.error('generateRecipe Error: GCF URL for recipe generation not found in appConfig.');
+        throw new Error('Client configuration error: Missing GCF URL.');
+    }
+
+    // Call the GCF directly
+    const response = await fetch(gcfUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ingredients: ingredients, type: 'broodje', model: model })
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+            ingredients: ingredients,
+            type: 'broodje',
+            model: model,
+            language: 'Nederlands' // Pass language if needed by GCF
+        }),
+        mode: 'cors' // Ensure CORS mode is set
     });
+
+    // Use the existing handleResponse for error handling and JSON parsing
     const result = await handleResponse(response);
+
+    // Still invalidate recipe cache if needed
     try {
-        sessionStorage.removeItem('recipes'); // Invalidate cache
+        sessionStorage.removeItem('recipes');
     } catch (e) {
         console.warn('Failed to remove recipes from sessionStorage:', e);
     }
-    return result;
+    return result; // Result should be { taskId: ..., recipe: {...} } from GCF
 }
 
 export async function getCostBreakdown(taskId) {

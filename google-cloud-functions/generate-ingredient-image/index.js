@@ -30,12 +30,33 @@ try {
 
 
 functions.http('generateIngredientImage', async (req, res) => {
+    // --- Add CORS headers ---
+    // Set CORS headers for all responses (including errors)
+    // Replace '*' with your specific Netlify frontend URL in production for better security
+    res.set('Access-Control-Allow-Origin', '*'); // Allows all origins for now
+    // Or use: res.set('Access-Control-Allow-Origin', 'https://broodjes-ai-v2--broodjes-ai.netlify.app');
+
+    // Handle OPTIONS preflight request
+    if (req.method === 'OPTIONS') {
+        // Send headers necessary for CORS preflight request
+        res.set('Access-Control-Allow-Methods', 'POST, GET, OPTIONS'); // Allow POST (and potentially GET/OPTIONS)
+        res.set('Access-Control-Allow-Headers', 'Content-Type'); // Allow Content-Type header
+        res.set('Access-Control-Max-Age', '3600'); // Cache preflight response for 1 hour
+        res.status(204).send(''); // Respond with 204 No Content
+        return; // Stop processing for OPTIONS request
+    }
+    // --- End CORS Handling ---
+
     console.log('Received request:', req.method, req.url);
     console.log('Body:', req.body);
 
+    // --- Added check if not POST (after OPTIONS handled) ---
     if (req.method !== 'POST') {
+        // Send 405 Method Not Allowed for non-POST/OPTIONS methods
+        // CORS header already set above
         return res.status(405).send('Method Not Allowed');
     }
+    // -------------------------------------------------------
 
     if (!supabase || !openai) {
         console.error('Clients not initialized properly.');

@@ -62,7 +62,7 @@ The application is built using a combination of a static frontend, serverless fu
     *   `/api/updateIngredient` (`updateIngredient.js`): Updates an existing ingredient in the `ingredients` table. Requires Service Role Key.
     *   `/api/deleteIngredient` (`deleteIngredient.js`): Deletes an ingredient from the `ingredients` table. Requires Service Role Key.
     *   `/api/clearRecipes` (`clearRecipes.js`): Deletes all records from the `async_tasks` table. Requires Service Role Key.
-    *   `/api/triggerIngredientImageGeneration` (`triggerIngredientImageGeneration.js`): Receives an `ingredient_id`, fetches the name, and asynchronously triggers the `generateIngredientImage` GCF.
+    *   `/api/getConfig` (`getConfig.js`): Returns configuration values, specifically the `GCF_IMAGE_GENERATION_URL`, to the frontend.
 
 *   **Backend - Shared Libraries (`netlify/functions/lib/`):**
     *   `openaiClient.js`: Utility to initialize and provide the OpenAI API client.
@@ -157,20 +157,21 @@ The application is built using a combination of a static frontend, serverless fu
 4.  **Netlify Function (`/api/addIngredient` or `/api/updateIngredient`):**
     *   Performs validation.
     *   Inserts/Updates ingredient in Supabase `ingredients` table.
-    *   **Asynchronously calls `/api/triggerIngredientImageGeneration`** with the ingredient ID (fire-and-forget).
-    *   Returns success/failure to frontend.
-5.  **Netlify Function (`/api/triggerIngredientImageGeneration`):**
-    *   Fetches ingredient name using ID.
-    *   Calls the `generateIngredientImage` GCF via HTTP POST.
+    *   Returns success (with the new/updated ingredient data) or failure to frontend.
+5.  **Frontend (`ingredientView.js`):**
+    *   Receives successful response from `add/update`.
+    *   Extracts `ingredient_id` and `ingredient_name`.
+    *   Fetches GCF URL using `/api/getConfig` (if not already fetched).
+    *   Asynchronously calls the `generateIngredientImage` GCF URL via `fetch` (POST), passing the ID and name.
 6.  **GCF (`generateIngredientImage`):**
-    *   Receives request.
+    *   Receives request with ID and name.
     *   Calls OpenAI Image API.
-    *   Updates the `image_url` in the Supabase `ingredients` table.
-7.  **User Action (Delete):**
+    *   Updates the `image_url` in the Supabase `ingredients` table for the given ID.
+7.  **User Action (Delete):** (Renumbered)
     *   User clicks Delete.
     *   Frontend (`ingredientView.js`) calls `/api/deleteIngredient`.
-8.  **Netlify Function (`/api/deleteIngredient`):** Deletes ingredient from Supabase.
-9.  **Frontend:** Updates UI based on success/failure.
+8.  **Netlify Function (`/api/deleteIngredient`):** (Renumbered) Deletes ingredient from Supabase.
+9.  **Frontend:** (Renumbered) Updates UI based on success/failure.
 
 ### E. Clear All Saved Recipes (New)
 
@@ -188,9 +189,13 @@ Ensure the following are configured correctly:
 *   **Netlify (Site settings > Build & deploy > Environment):**
     *   `OPENAI_API_KEY`
     *   `SUPABASE_URL`
-    *   `SERVICE_ROLE_KEY` (Supabase Service Role Key)
-    *   `SUPABASE_ANON_KEY` (No longer directly used by backend functions)
-*   ~~**GCP (GCF Deployment):**~~ (Removed)
+    *   `SUPABASE_SERVICE_KEY` (Supabase Service Role Key)
+    *   `GCF_IMAGE_GENERATION_URL` (URL for the deployed `generateIngredientImage` GCF)
+    *   `SUPABASE_ANON_KEY` (Used by Supabase client library, though potentially not directly by backend functions anymore)
+*   **GCP (Environment Variables for `generateIngredientImage` GCF):**
+    *   `SUPABASE_URL`
+    *   `SUPABASE_SERVICE_KEY`
+    *   `OPENAI_API_KEY`
 
 ## 4. Potential Improvements / Areas for Review
 
@@ -245,6 +250,13 @@ This section tracks areas identified for potential improvement or further invest
 *   **Investigate Unused/Redundant Code:**
     *   **(Done)** Reviewed and removed `generate.js` and `get-processed-recipe.js`.
 
+*   **Stap 9: Implementeer OpenAI Request Caching (Server-side) (Done)**
+    *   **Doel:** Verminder onnodige OpenAI calls en kosten.
+    *   **Actie:** Database caching geïmplementeerd via `cacheUtils.js` en `openai_cache` tabel. Functies `generateRecipe`, `refineRecipe`, en AI helpers in `aiCostUtils` checken nu de cache en slaan nieuwe resultaten op.
+*   **Stap 10: Implementeer Asynchrone Beeldgeneratie Ingredienten (Done)**
+    *   **Doel:** Voeg afbeeldingen toe aan ingrediënten zonder de UI te blokkeren.
+    *   **Actie:** Setup GCF met CORS. Frontend (`ingredientView.js`) triggert GCF *direct* via `fetch` na succesvolle toevoeging/update via `/api/addIngredient` of `/api/updateIngredient`. GCF updatet `image_url` in Supabase `ingredients` tabel. `/api/getConfig` levert GCF URL aan frontend. *Volgende: Testen image display in `getCostBreakdown`, evt. placeholders, "Visualiseer Broodje" knop.*
+
 ## 5. Improvement Plan (Phased Approach - TEMP)
 
 This section outlines the planned steps for implementing improvements.
@@ -283,6 +295,6 @@ This section outlines the planned steps for implementing improvements.
 *   **Stap 9: Implementeer OpenAI Request Caching (Server-side) (Done)**
     *   **Doel:** Verminder onnodige OpenAI calls en kosten.
     *   **Actie:** Database caching geïmplementeerd via `cacheUtils.js` en `openai_cache` tabel. Functies `generateRecipe`, `refineRecipe`, en AI helpers in `aiCostUtils` checken nu de cache en slaan nieuwe resultaten op.
-*   **Stap 10: Implementeer Verdere UI/UX Features (In Progress)**
-    *   **Doel:** Verbeter visuele feedback en voeg beeldgeneratie toe.
-    *   **Actie:** Setup GCF, Netlify trigger, DB changes, backend logic for asynchronous ingredient image generation. Frontend rendering aangepast. **Caching bug in generateRecipe (wrong model param & cache hit) gefixed.** *Volgende: Testen image generation, evt. placeholders, "Visualiseer Broodje" knop.*
+*   **Stap 10: Implementeer Asynchrone Beeldgeneratie Ingredienten (Done)**
+    *   **Doel:** Voeg afbeeldingen toe aan ingrediënten zonder de UI te blokkeren.
+    *   **Actie:** Setup GCF met CORS. Frontend (`ingredientView.js`) triggert GCF *direct* via `fetch` na succesvolle toevoeging/update via `/api/addIngredient` of `/api/updateIngredient`. GCF updatet `image_url` in Supabase `ingredients` tabel. `/api/getConfig` levert GCF URL aan frontend. *Volgende: Testen image display in `getCostBreakdown`, evt. placeholders, "Visualiseer Broodje" knop.*

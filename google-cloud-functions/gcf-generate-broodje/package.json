@@ -1,0 +1,14 @@
+{
+    "name": "gcf-generate-broodje",
+    "version": "1.0.0",
+    "description": "GCF to generate broodje recipes using OpenAI",
+    "main": "index.js",
+    "dependencies": {
+        "@google-cloud/functions-framework": "^3.0.0",
+        "@supabase/supabase-js": "^2.0.0",
+        "openai": "^4.0.0"
+    },
+    "engines": {
+        "node": "20"
+    }
+}
