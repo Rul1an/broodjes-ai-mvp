@@ -15,7 +15,7 @@ The application is built using a combination of a static frontend, serverless fu
         *   `js/uiUtils.js`: Contains helpers for common UI tasks (loading indicators, button states).
         *   `js/utils.js`: Contains non-DOM utility functions (text formatting, data extraction).
         *   `js/views/navigation.js`: Manages view switching logic.
-        *   `js/views/generateView.js`: Handles logic for the recipe generation form.
+        *   `js/views/generateView.js`: Handles logic for the recipe generation form, including **passing the selected AI model** to the backend.
         *   `js/views/recipeListView.js`: Handles displaying, loading, refining, and clearing saved recipes.
         *   `js/views/ingredientView.js`: Handles displaying and managing ingredients.
     *   Hosting: Netlify Static Site Hosting
@@ -98,12 +98,14 @@ The application is built using a combination of a static frontend, serverless fu
 ### A. Generate New Recipe
 
 1.  **Frontend:** User enters ingredients/idea, selects model (`gpt-4o` or `gpt-4o-mini`), clicks "Generate".
-2.  **Frontend (`js/views/generateView.js`):** Calls `apiService.generateRecipe` (passing user idea as `ingredients`, selected `model`, and hardcoded `type='broodje'`).
+2.  **Frontend (`js/views/generateView.js`):** Calls `apiService.generateRecipe` (passing user idea as `ingredients` and the **selected `model`**).
 3.  **Netlify Function (`/api/generateRecipe`):**
-    *   Calls OpenAI API with the user's prompt and selected model (via `lib/openaiClient.js`).
-    *   Receives recipe JSON from OpenAI.
-    *   Saves recipe JSON, idea, model, status='completed' to `async_tasks` (using `lib/supabaseClient.js`).
-    *   Returns `{ recipe: <json_object>, taskId: <new_task_id> }` to the frontend.
+    *   Checks cache based on input (ingredients, model, prompts).
+    *   If cache miss: Calls OpenAI API with the user's prompt and selected model (via `lib/openaiClient.js`).
+    *   Saves successful OpenAI response to cache.
+    *   Parses recipe JSON from (cached or new) response.
+    *   Saves recipe JSON, idea, model, status='completed' to `async_tasks`.
+    *   Returns `{ recipe: <json_object>, taskId: <new_task_id> }`.
 4.  **Frontend (`js/views/generateView.js` via `apiService.js`):**
     *   Receives the response.
     *   Calls `recipeListView.displayRecipe` to show the formatted recipe.
@@ -232,7 +234,7 @@ This section tracks areas identified for potential improvement or further invest
 
 *   **UI/UX Enhancements:**
     *   **(Done)** Improve Loading/Feedback.
-    *   **(Partially Done) Ingredient Image Display:** Backend logic fetches/includes image URLs. GCF generates images asynchronously upon add/update. Frontend renders the included HTML. *Needs testing & potentially placeholder/error state handling in UI.*
+    *   **(Partially Done) Ingredient Image Display:** Backend setup complete (GCF, trigger, DB update, cost breakdown includes `<img>`). Frontend rendering works via `marked.parse`. *Needs more robust testing, placeholder/error state handling in UI.*
     *   **(Next)** Dedicated "Visualiseer Broodje" button and associated GCF/workflow.
     *   **(Next)** Replace `confirm()` with custom modal.
 
@@ -283,4 +285,4 @@ This section outlines the planned steps for implementing improvements.
     *   **Actie:** Database caching geïmplementeerd via `cacheUtils.js` en `openai_cache` tabel. Functies `generateRecipe`, `refineRecipe`, en AI helpers in `aiCostUtils` checken nu de cache en slaan nieuwe resultaten op.
 *   **Stap 10: Implementeer Verdere UI/UX Features (In Progress)**
     *   **Doel:** Verbeter visuele feedback en voeg beeldgeneratie toe.
-    *   **Actie:** Setup GCF, Netlify trigger, DB changes, and backend logic for asynchronous ingredient image generation. Frontend rendering aangepast (impliciet via HTML). *Volgende: Testen, evt. placeholders, "Visualiseer Broodje" knop.*
+    *   **Actie:** Setup GCF, Netlify trigger, DB changes, backend logic for asynchronous ingredient image generation. Frontend rendering aangepast. **Caching bug in generateRecipe (wrong model param & cache hit) gefixed.** *Volgende: Testen image generation, evt. placeholders, "Visualiseer Broodje" knop.*

@@ -105,10 +105,10 @@ exports.handler = async function (event, context) {
         // --- Trigger GCF Image Generation Asynchronously ---
         if (process.env.GCF_IMAGE_GENERATION_URL && process.env.URL) {
             try {
-                const triggerUrl = new URL('/api/triggerIngredientImageGeneration', process.env.URL).toString();
+                const triggerUrl = new URL('/api/triggerImage', process.env.URL).toString();
                 console.log(`Triggering async image generation for new ingredient: ${newIngredient.id} via ${triggerUrl}`);
                 // Fire and forget - don't await
-                fetch(triggerUrl, { // Use absolute URL
+                fetch(triggerUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ingredient_id: newIngredient.id })
@@ -124,41 +124,9 @@ exports.handler = async function (event, context) {
         }
         // --- End Trigger ---
 
-        return {
-            statusCode: 201,
-            body: JSON.stringify({ ingredient: newIngredient }),
-            headers: { 'Content-Type': 'application/json' }
-        };
-
-    } catch (error) {
-        // Log the full error object for better debugging
-        console.error('Error in addIngredient function handler:', error);
-
-        // Standard error structure for caught errors
-        let statusCode = 500;
-        let errorCode = "INTERNAL_ERROR";
-        let userMessage = 'Failed to add ingredient due to an internal server error.';
-
-        if (error.message?.startsWith('Database error:')) {
-            errorCode = "DATABASE_ERROR";
-            userMessage = 'A database error occurred while adding the ingredient.';
-        } else if (error.message?.includes('already exists')) { // Should be caught earlier, but as fallback
-            statusCode = 409;
-            errorCode = "CONFLICT_DUPLICATE";
-            userMessage = 'Ingredient already exists.';
-        }
-        // Add more specific checks if needed (e.g., parsing errors if not caught earlier)
-
-        return {
-            statusCode: statusCode,
-            body: JSON.stringify({
-                error: {
-                    message: userMessage,
-                    code: errorCode,
-                    details: error.message // Include original message as detail
-                }
-            }),
-            headers: { 'Content-Type': 'application/json' }
-        };
+    } catch (e) {
+        console.error('Error processing request:', e);
+        // Standard error for generic catch block
+        return { statusCode: 500, body: JSON.stringify({ error: { message: 'Internal Server Error', code: 'INTERNAL_SERVER_ERROR', details: e.message } }), headers: { 'Content-Type': 'application/json' } };
     }
 };
