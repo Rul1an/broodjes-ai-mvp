@@ -98,17 +98,27 @@ const triggerGcfImageGeneration = async (ingredientId, ingredientName) => {
     }
 };
 
-// Function to fetch application configuration (including GCF URL)
+// Function to fetch application configuration (including GCF URLs)
 const fetchAppConfig = async () => {
     console.log("Fetching application config...");
+    // Ensure global config object exists
+    window.appConfig = window.appConfig || {};
     try {
-        const config = await api.getConfig();
-        if (config && config.gcfImageUrl) {
+        const config = await api.getConfig(); // Should return { gcfImageUrl: '...', gcfGenerateBroodjeUrl: '...' }
+
+        // Check if both URLs are present in the response
+        if (config && config.gcfImageUrl && config.gcfGenerateBroodjeUrl) {
+            // Store both URLs globally
+            window.appConfig.gcfImageUrl = config.gcfImageUrl;
+            window.appConfig.gcfGenerateBroodjeUrl = config.gcfGenerateBroodjeUrl;
+
+            // Update local variable for ingredient image trigger
             gcfTriggerUrl = config.gcfImageUrl;
-            console.log("GCF Trigger URL fetched:", gcfTriggerUrl);
+
+            console.log("App Config fetched:", window.appConfig);
         } else {
-            console.error("GCF Trigger URL not found in config response:", config);
-            ui.displayErrorToast('Kon configuratie voor beeldgeneratie niet laden.');
+            console.error("Required GCF URLs not found in config response:", config);
+            ui.displayErrorToast('Kon configuratie voor GCFs niet laden.');
         }
     } catch (error) {
         console.error("Error fetching app config:", error);
