@@ -1,6 +1,9 @@
 import * as api from '../apiService.js';
 import * as ui from '../uiUtils.js';
 
+// GCF Trigger URL
+let gcfTriggerUrl = null;
+
 // DOM Elements
 let ingredientNameInput;
 let ingredientUnitInput;
@@ -59,6 +62,61 @@ export async function loadIngredients() {
     }
 }
 
+// Function to trigger the GCF for image generation
+const triggerGcfImageGeneration = async (ingredientId, ingredientName) => {
+    if (!gcfTriggerUrl) {
+        console.error("GCF Trigger URL not available.");
+        // Optionally display a user-facing error or retry fetching the config
+        return;
+    }
+
+    console.log(`Triggering GCF for ingredient: ${ingredientName} (ID: ${ingredientId})`);
+    try {
+        const response = await fetch(gcfTriggerUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                ingredientId: ingredientId,
+                ingredientName: ingredientName,
+            }),
+        });
+
+        if (!response.ok) {
+            // Log the error but don't necessarily block the user
+            console.error(`GCF trigger failed with status ${response.status}:`, await response.text());
+            ui.displayErrorToast(`Beeldgeneratie trigger mislukt (status ${response.status}).`);
+        } else {
+            console.log("GCF triggered successfully.");
+            // Optional: display a success message, maybe a subtle one
+            // ui.displayInfoToast(`Beeldgeneratie gestart voor ${ingredientName}.`);
+        }
+    } catch (error) {
+        console.error("Error triggering GCF:", error);
+        ui.displayErrorToast('Fout bij het triggeren van beeldgeneratie.');
+    }
+};
+
+// Function to fetch application configuration (including GCF URL)
+const fetchAppConfig = async () => {
+    console.log("Fetching application config...");
+    try {
+        const config = await api.getConfig();
+        if (config && config.gcfTriggerUrl) {
+            gcfTriggerUrl = config.gcfTriggerUrl;
+            console.log("GCF Trigger URL fetched:", gcfTriggerUrl);
+        } else {
+            console.error("GCF Trigger URL not found in config response:", config);
+            ui.displayErrorToast('Kon configuratie voor beeldgeneratie niet laden.');
+        }
+    } catch (error) {
+        console.error("Error fetching app config:", error);
+        ui.displayErrorToast('Fout bij laden applicatieconfiguratie.');
+        // Consider how to handle this - maybe retry?
+    }
+};
+
 // Function to handle adding an ingredient
 const handleAddIngredient = async () => {
     const name = ingredientNameInput.value.trim();
@@ -83,7 +141,20 @@ const handleAddIngredient = async () => {
     try {
         // Use the validated price variable
         const data = await api.addIngredient(name, unit, price);
+        console.log("Ingredient added successfully:", data);
+
+        // Trigger GCF after successful addition
+        if (data && data.newIngredient && data.newIngredient.id && data.newIngredient.name) {
+            triggerGcfImageGeneration(data.newIngredient.id, data.newIngredient.name); // Call the trigger function
+        } else {
+            console.warn("Could not trigger GCF: Missing ID or Name in addIngredient response.", data);
+        }
+
         await loadIngredients(); // Reload the list (will use cache if appropriate)
+        // Clear input fields after successful addition
+        ingredientNameInput.value = '';
+        ingredientUnitInput.value = '';
+        ingredientPriceInput.value = '';
 
     } catch (errorPayload) {
         const errorMessage = errorPayload?.message || 'Onbekende fout bij toevoegen.';
@@ -153,6 +224,9 @@ export function setupIngredientView() {
 
     addIngredientBtn.addEventListener('click', handleAddIngredient);
     ingredientTableBody.addEventListener('click', handleIngredientTableClicks);
+
+    // Fetch the config when the view is set up
+    fetchAppConfig();
 
     console.log("Ingredient View setup complete.");
     // Note: loadIngredients() is called by the navigation module when the view becomes active.
