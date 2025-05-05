@@ -124,6 +124,12 @@ exports.handler = async function (event, context) {
         }
         // --- End Trigger ---
 
+        return {
+            statusCode: 201, // Created
+            body: JSON.stringify({ ingredient: newIngredient }),
+            headers: { 'Content-Type': 'application/json' }
+        };
+
     } catch (e) {
         console.error('Error processing request:', e);
         // Standard error for generic catch block
