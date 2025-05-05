@@ -1,6 +1,7 @@
 import { marked } from "https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js";
 import * as api from '../apiService.js';
 import * as ui from '../uiUtils.js';
+import { showImageModal } from '../uiUtils.js';
 import * as utils from '../utils.js';
 
 // DOM Elements
@@ -48,22 +49,47 @@ export function displayCostBreakdown(taskId, breakdownData) {
 
     if (!costElement) {
         console.warn(`Cost breakdown element not found for taskId: ${taskId}`);
-        // As a fallback, try appending to the main output if the recipe list isn't the active view?
-        // Or maybe just log the warning.
         return;
     }
 
+    let contentHtml = '';
     if (breakdownData.error) {
-        costElement.innerHTML = `<p style="color: red;">Fout bij kostenberekening: ${breakdownData.error}</p>`;
+        contentHtml = `<p style="color: red;">Fout bij kostenberekening: ${breakdownData.error}</p>`;
     } else if (breakdownData.breakdown) {
-        // Use marked.parse and render in a div, not pre
-        costElement.innerHTML = `
+        const parsedHtml = marked.parse(breakdownData.breakdown);
+        contentHtml = `
             <h3>Kosten Opbouw (${breakdownData.calculationType || 'N/A'})</h3>
-            <div class="cost-content">${marked.parse(breakdownData.breakdown)}</div>
+            <div class="cost-content">${parsedHtml}</div>
         `;
     } else {
-        costElement.innerHTML = '<p><i>Kon kosten opbouw niet laden.</i></p>';
+        contentHtml = '<p><i>Kon kosten opbouw niet laden.</i></p>';
     }
+
+    costElement.innerHTML = contentHtml;
+
+    // --- Add image error handling AFTER setting innerHTML ---
+    if (breakdownData.breakdown && !breakdownData.error) {
+        const images = costElement.querySelectorAll('.cost-content img');
+        images.forEach(img => {
+            // Remove existing listeners first to avoid duplicates if function is called again
+            img.removeEventListener('error', handleImageError);
+            // Add the error listener
+            img.addEventListener('error', handleImageError);
+        });
+    }
+}
+
+/**
+ * Handles errors when loading ingredient images.
+ * Adds a 'broken-image' class for CSS styling.
+ */
+function handleImageError(event) {
+    console.warn('Image failed to load:', event.target.src);
+    event.target.classList.add('broken-image');
+    // Optional: set a placeholder src directly if CSS content url doesn't work everywhere
+    // event.target.src = 'path/to/placeholder.svg';
+    // Prevent infinite loop if the placeholder itself fails
+    event.target.removeEventListener('error', handleImageError);
 }
 
 // --- Saved Recipe List Functions ---
@@ -103,6 +129,33 @@ const handleRefineRecipe = async (button) => {
         refineLoading.style.display = 'none';
     }
 };
+
+// Function to handle visualizing a broodje
+async function handleVisualizeBroodje(button) {
+    const taskId = button.dataset.taskId;
+    if (!taskId) {
+        console.error('Visualize button clicked without taskId!');
+        return;
+    }
+
+    console.log(`Visualizing broodje for task: ${taskId}`);
+    ui.setButtonLoading(button, true, 'Visualiseren...');
+
+    try {
+        const result = await api.visualizeBroodje(taskId);
+        console.log("Visualization result:", result);
+        if (result.imageUrl) {
+            showImageModal(result.imageUrl, `Visualisatie voor recept ${taskId}`);
+        } else {
+            ui.displayErrorToast('Geen image URL ontvangen.');
+        }
+    } catch (error) {
+        console.error(`Error visualizing broodje ${taskId}:`, error);
+        ui.displayErrorToast(error.message || 'Kon broodje niet visualiseren.');
+    } finally {
+        ui.setButtonLoading(button, false); // Reset button text to original
+    }
+}
 
 // Function to load and display saved recipes
 export async function loadRecipes() {
@@ -161,7 +214,10 @@ export async function loadRecipes() {
                         <div id="cost-breakdown-${recipe.id}" class="cost-breakdown-section">
                            ${parsedCostBreakdownHtml}
                         </div>
-                        <div class="refine-section" style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                        <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                           <button class="visualize-btn" data-task-id="${recipe.id}">Visualiseer Broodje</button>
+                        </div>
+                        <div class="refine-section" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
                              <h4>Recept Verfijnen</h4>
                             <input type="text" class="refine-input" placeholder="Vraag om verfijning (bv. maak het pittiger)" style="width: 70%; margin-right: 5px;">
                             <button class="refine-btn">Verfijn Recept</button>
@@ -188,35 +244,40 @@ export async function loadRecipes() {
 
 // Function to handle clearing all recipes
 const handleClearAllRecipes = async () => {
-    if (!confirm('WAARSCHUWING: Weet je zeker dat je ALLE opgeslagen recepten permanent wilt verwijderen?')) {
-        return;
-    }
+    const button = document.getElementById('clear-all-recipes-btn');
 
-    ui.setButtonLoading(clearRecipesBtn, true, 'Verwijderen...');
-    ui.showListLoading();
-
-    try {
-        await api.clearAllRecipes();
-        loadRecipes(); // Reload the (now empty) list
-
-    } catch (errorPayload) {
-        const errorMessage = errorPayload?.message || 'Onbekende fout bij verwijderen recepten.';
-        console.error('Error clearing recipes:', errorPayload);
-        ui.displayErrorToast(errorMessage);
-    } finally {
-        ui.setButtonLoading(clearRecipesBtn, false);
-        ui.hideListLoading();
-    }
+    ui.showConfirmationModal('Weet je zeker dat je ALLE opgeslagen recepten wilt verwijderen? Dit kan niet ongedaan gemaakt worden.', async () => {
+        console.log('Confirmed clearing all recipes.');
+        ui.setButtonLoading(button, true);
+        try {
+            await api.clearAllRecipes();
+            console.log('Successfully cleared all recipes.');
+            await loadRecipes(); // Refresh the list (should be empty now)
+            ui.displayErrorToast('Alle recepten zijn verwijderd.', 'success'); // Use toast for success feedback
+        } catch (error) {
+            console.error('Error clearing recipes:', error);
+            ui.displayErrorToast(error.message || 'Kon recepten niet verwijderen.');
+        } finally {
+            // Reset button state regardless of outcome, as the action is complete
+            ui.setButtonLoading(button, false);
+        }
+    }, () => {
+        console.log('Cancelled clearing all recipes.');
+        // No action needed on cancel
+    });
 };
 
 // --- Initialization ---
 
-// Use event delegation for refine buttons
+// Use event delegation for refine and visualize buttons
 function handleRecipeListClicks(event) {
     if (event.target.classList.contains('refine-btn')) {
         handleRefineRecipe(event.target);
     }
-    // Add other delegated events here if needed (e.g., calculate cost)
+    if (event.target.classList.contains('visualize-btn')) {
+        handleVisualizeBroodje(event.target);
+    }
+    // Add other delegated events here if needed
 }
 
 export function setupRecipeListView() {

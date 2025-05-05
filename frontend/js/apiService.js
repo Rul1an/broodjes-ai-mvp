@@ -222,3 +222,56 @@ export async function deleteIngredient(ingredientId) {
 // but not implemented in the original script's event handling.
 // If implemented, add sessionStorage.removeItem('ingredients');
 // export async function updateIngredient(id, data) { ... }
+
+/**
+ * Calls the GCF to generate an image visualization for a specific recipe task.
+ * @param {string} taskId - The ID of the recipe task.
+ * @returns {Promise<object>} - Promise resolving to { imageUrl: '...' } or throwing an error.
+ */
+export async function visualizeBroodje(taskId) {
+    // Ensure config is loaded
+    await ensureConfigLoaded();
+
+    if (!appConfig.gcfVisualizeBroodjeUrl) {
+        console.error('visualizeBroodje Error: GCF_VISUALIZE_BROODJE_URL not configured.');
+        throw new Error('Visualisatie functie is niet geconfigureerd.');
+    }
+
+    console.log(`Calling visualize GCF for taskId: ${taskId}`);
+    const response = await fetch(appConfig.gcfVisualizeBroodjeUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ taskId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        console.error('visualizeBroodje API Error:', data);
+        const errorMessage = data?.error?.details || data?.error || 'Kon broodje niet visualiseren.';
+        throw new Error(errorMessage);
+    }
+
+    console.log('visualizeBroodje response:', data);
+    if (!data.imageUrl) {
+        throw new Error('Geen image URL ontvangen van visualisatie functie.');
+    }
+
+    return data; // Should contain { imageUrl: '...' }
+}
+
+// Helper function to load config if not already loaded
+async function ensureConfigLoaded() {
+    if (!appConfig.gcfImageUrl || !appConfig.gcfGenerateBroodjeUrl || !appConfig.gcfVisualizeBroodjeUrl) {
+        console.log('Config not fully loaded, fetching...');
+        await fetchAppConfig(); // Assuming fetchAppConfig is available globally or imported
+        // Re-check after fetching
+        if (!appConfig.gcfImageUrl || !appConfig.gcfGenerateBroodjeUrl || !appConfig.gcfVisualizeBroodjeUrl) {
+            console.error('Failed to load necessary configuration after fetch attempt.');
+            // Depending on the flow, you might throw an error here
+            // or rely on subsequent checks to fail.
+        }
+    }
+}

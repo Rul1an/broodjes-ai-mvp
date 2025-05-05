@@ -1,5 +1,7 @@
 import * as api from '../apiService.js';
 import * as ui from '../uiUtils.js';
+import { showConfirmationModal } from '../uiUtils.js';
+import { fetchAppConfig } from './generateView.js';
 
 // GCF Trigger URL
 let gcfTriggerUrl = null;
@@ -98,35 +100,6 @@ const triggerGcfImageGeneration = async (ingredientId, ingredientName) => {
     }
 };
 
-// Function to fetch application configuration (including GCF URLs)
-const fetchAppConfig = async () => {
-    console.log("Fetching application config...");
-    // Ensure global config object exists
-    window.appConfig = window.appConfig || {};
-    try {
-        const config = await api.getConfig(); // Should return { gcfImageUrl: '...', gcfGenerateBroodjeUrl: '...' }
-
-        // Check if both URLs are present in the response
-        if (config && config.gcfImageUrl && config.gcfGenerateBroodjeUrl) {
-            // Store both URLs globally
-            window.appConfig.gcfImageUrl = config.gcfImageUrl;
-            window.appConfig.gcfGenerateBroodjeUrl = config.gcfGenerateBroodjeUrl;
-
-            // Update local variable for ingredient image trigger
-            gcfTriggerUrl = config.gcfImageUrl;
-
-            console.log("App Config fetched:", window.appConfig);
-        } else {
-            console.error("Required GCF URLs not found in config response:", config);
-            ui.displayErrorToast('Kon configuratie voor GCFs niet laden.');
-        }
-    } catch (error) {
-        console.error("Error fetching app config:", error);
-        ui.displayErrorToast('Fout bij laden applicatieconfiguratie.');
-        // Consider how to handle this - maybe retry?
-    }
-};
-
 // Function to handle adding an ingredient
 const handleAddIngredient = async () => {
     const name = ingredientNameInput.value.trim();
@@ -176,45 +149,37 @@ const handleAddIngredient = async () => {
 };
 
 // Function to handle deleting an ingredient
-const handleDeleteIngredient = async (ingredientId, button) => {
-    if (!ingredientId) return;
+async function handleDeleteIngredient(event) {
+    const button = event.target;
+    const ingredientId = button.dataset.id;
+    const ingredientName = button.closest('tr').querySelector('td:first-child').textContent;
 
-    if (!confirm(`Weet je zeker dat je het ingrediënt met ID ${ingredientId} wilt verwijderen?`)) {
-        return;
-    }
-
-    ui.setButtonLoading(button, true, '...');
-
-    try {
-        await api.deleteIngredient(ingredientId);
-        const row = button.closest('tr');
-        if (row) {
-            row.remove();
-            return; // Exit early on success
-        } else {
+    showConfirmationModal(`Weet je zeker dat je ingrediënt "${ingredientName}" wilt verwijderen?`, async () => {
+        console.log(`Confirmed deletion for ingredient: ${ingredientName} (ID: ${ingredientId})`);
+        ui.setButtonLoading(button, true);
+        try {
+            await api.deleteIngredient(ingredientId);
+            console.log(`Successfully deleted ingredient: ${ingredientName}`);
+            // Reload ingredients to reflect the change
             await loadIngredients();
+        } catch (error) {
+            console.error(`Error deleting ingredient ${ingredientName}:`, error);
+            ui.displayErrorToast(error.message || 'Kon ingrediënt niet verwijderen.');
+            ui.setButtonLoading(button, false); // Only reset loading on error, row removal handles success
         }
-
-    } catch (errorPayload) {
-        const errorMessage = errorPayload?.message || 'Onbekende fout bij verwijderen.';
-        console.error(`Error deleting ingredient ${ingredientId}:`, errorPayload);
-        ui.displayErrorToast(errorMessage);
-    } finally {
-        // Always re-enable the button if it still exists (e.g., if row removal failed or error occurred)
-        // Check if the button's parent element still exists in the DOM
-        if (button.isConnected) {
-            ui.setButtonLoading(button, false);
-        }
-    }
-};
+        // No need to manually reset loading state here if row is removed on success
+    }, () => {
+        console.log(`Cancelled deletion for ingredient: ${ingredientName}`);
+        // Optional: Add any logic needed on cancellation
+    });
+}
 
 // --- Initialization ---
 
 // Use event delegation for delete buttons within the table body
 function handleIngredientTableClicks(event) {
     if (event.target.classList.contains('delete-ingredient-btn')) {
-        const ingredientId = event.target.dataset.id;
-        handleDeleteIngredient(ingredientId, event.target);
+        handleDeleteIngredient(event);
     }
 }
 

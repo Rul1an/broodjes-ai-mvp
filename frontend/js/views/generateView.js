@@ -24,22 +24,27 @@ const fetchCostBreakdown = async (taskId) => {
     }
 };
 
-// Function to handle the generate recipe button click
+// Function to handle generating a recipe
 const handleGenerateRecipe = async () => {
-    const idea = ideaInput.value.trim();
+    const userIdea = ideaInput.value.trim();
     const selectedModel = modelSelect.value;
 
-    if (!idea) {
-        alert('Voer een idee of ingrediënten in.');
-        return;
+    // --- Input Validation ---
+    if (!userIdea) {
+        // Use existing alert or switch to displayErrorToast if preferred
+        alert('Voer alsjeblieft een broodjesidee in.');
+        // ui.displayErrorToast('Voer alsjeblieft een broodjesidee in.');
+        return; // Stop execution if input is empty
     }
+    // --- End Input Validation ---
 
+    console.log(`Generating recipe for: "${userIdea}" using model ${selectedModel}`);
     ui.showLoading();
     ui.setButtonLoading(generateBtn, true, 'Genereren...');
     recipeOutput.innerHTML = ''; // Clear previous output
 
     try {
-        const result = await api.generateRecipe(idea, selectedModel);
+        const result = await api.generateRecipe(userIdea, selectedModel);
 
         if (!result || !result.recipe || !result.taskId) {
             throw new Error('Ongeldig antwoord ontvangen van de server.');
