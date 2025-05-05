@@ -102,46 +102,7 @@ exports.handler = async function (event, context) {
         // We capture the returned data which includes the new ID
         const newIngredient = data;
 
-        // --- Trigger GCF Image Generation Directly ---
-        if (process.env.GCF_IMAGE_GENERATION_URL) {
-            try {
-                const gcfUrl = process.env.GCF_IMAGE_GENERATION_URL;
-                const ingredientId = newIngredient.id;
-                const ingredientName = newIngredient.name; // Name is already available
-
-                console.log(`Triggering GCF directly for new ingredient: ${ingredientName} (ID: ${ingredientId}) via ${gcfUrl}`);
-
-                // --- MODIFIED: await the fetch call ---
-                await fetch(gcfUrl, {
-                    // -------------------------------------
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ingredient_id: ingredientId,
-                        ingredient_name: ingredientName
-                    })
-                })
-                    .then(async response => {
-                        // Log GCF response status, but don't wait for it
-                        if (!response.ok) {
-                            const errorText = await response.text();
-                            console.error(`Direct GCF Call Failed (Status: ${response.status}) for ingredient ${ingredientId}: ${errorText}`);
-                        } else {
-                            console.log(`Direct GCF triggered successfully (Status: ${response.status}) for ingredient ${ingredientId}`);
-                        }
-                    })
-                    .catch(fetchError => {
-                        console.error(`Error making direct fetch call to GCF for ingredient ${ingredientId}:`, fetchError);
-                    });
-            } catch (e) {
-                console.error(`Error initiating direct GCF trigger for new ingredient (ID: ${newIngredient.id}):`, e);
-            }
-        } else {
-            console.warn('GCF_IMAGE_GENERATION_URL env var not set, skipping image generation trigger.');
-        }
-        // --- End Trigger ---
-
-        console.log(`addIngredient function proceeding after initiating fetch for ID: ${newIngredient.id}`);
+        console.log(`addIngredient function finished for ID: ${newIngredient.id}`);
 
         return {
             statusCode: 201, // Created
