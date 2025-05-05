@@ -112,10 +112,19 @@ exports.handler = async function (event, context) {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ingredient_id: newIngredient.id })
-                }).catch(triggerError => {
-                    // Log errors from the trigger call itself, but don't fail the main request
-                    console.error(`Failed to trigger image generation for ingredient ${newIngredient.id}:`, triggerError);
-                });
+                })
+                    .then(async response => {
+                        // ADDED: Log response status from triggerImage
+                        console.log(`triggerImage call completed with status: ${response.status}`);
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error(`triggerImage call failed (Status: ${response.status}): ${errorText}`);
+                        }
+                    })
+                    .catch(triggerError => {
+                        // Log errors from the fetch call itself
+                        console.error(`Failed to initiate fetch call to triggerImage for ingredient ${newIngredient.id}:`, triggerError);
+                    });
             } catch (e) {
                 console.error(`Error initiating trigger for image generation (ingredient ${newIngredient.id}):`, e);
             }
