@@ -1,0 +1,7 @@
+# Environment variables for gcf-generate-broodje GCF
+# IMPORTANT: Replace placeholder values with your actual secrets before deploying!
+SUPABASE_URL: "https://tnkmzxzneyvqmyeaqewa.supabase.co"
+SUPABASE_SERVICE_KEY: "YOUR_SUPABASE_SERVICE_KEY_HERE"
+OPENAI_API_KEY: "YOUR_OPENAI_KEY_HERE"
+# Optional: Set specific origin instead of '*', e.g.:
+# ALLOWED_ORIGIN: "https://broodjes-ai-v2--broodjes-ai.netlify.app"

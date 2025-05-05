@@ -70,3 +70,6 @@ pids
 
 *.pyc
 __pycache__/
+
+gcf_env.yaml
+
