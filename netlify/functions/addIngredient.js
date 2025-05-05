@@ -140,6 +140,8 @@ exports.handler = async function (event, context) {
         }
         // --- End Trigger ---
 
+        console.log(`addIngredient function proceeding after initiating fetch for ID: ${newIngredient.id}`);
+
         return {
             statusCode: 201, // Created
             body: JSON.stringify({ ingredient: newIngredient }),
