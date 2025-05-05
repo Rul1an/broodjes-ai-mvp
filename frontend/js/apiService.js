@@ -10,6 +10,9 @@ const CLEAR_RECIPES_URL = '/api/clearRecipes';
 const GET_COST_BREAKDOWN_URL = '/api/getCostBreakdown';
 const GET_CONFIG_URL = '/api/getConfig';
 
+// Global object to store configuration
+window.appConfig = window.appConfig || {};
+
 // Updated helper function for handling fetch responses
 async function handleResponse(response) {
     if (!response.ok) {
@@ -74,13 +77,42 @@ export async function getConfig() {
     }
 }
 
+// Fetch and store config globally
+async function fetchAppConfig() {
+    console.log("Fetching application config...");
+    try {
+        const config = await getConfig(); // Call the exported function
+
+        // Check if all required URLs are present
+        if (config && config.gcfImageUrl && config.gcfGenerateBroodjeUrl && config.gcfVisualizeBroodjeUrl) {
+            // Store all URLs globally
+            window.appConfig.gcfImageUrl = config.gcfImageUrl;
+            window.appConfig.gcfGenerateBroodjeUrl = config.gcfGenerateBroodjeUrl;
+            window.appConfig.gcfVisualizeBroodjeUrl = config.gcfVisualizeBroodjeUrl; // Store the new URL
+
+            console.log("App Config fetched and stored:", window.appConfig);
+        } else {
+            console.error("Required GCF URLs not found in config response:", config);
+            // Optionally display error to user via uiUtils, but ensureConfigLoaded might handle this
+            throw new Error('Kon configuratie voor GCFs niet volledig laden.');
+        }
+    } catch (error) {
+        console.error("Error fetching app config:", error);
+        // Re-throw error to be handled by ensureConfigLoaded or the caller
+        throw error;
+    }
+}
+
 // --- Recipes ---
 
 export async function generateRecipe(ingredients, model) {
-    // Get the GCF URL (assuming it's stored globally after fetchAppConfig runs)
+    // Ensure config is loaded first
+    await ensureConfigLoaded();
+
+    // Get the GCF URL (should be available now)
     const gcfUrl = window.appConfig?.gcfGenerateBroodjeUrl;
     if (!gcfUrl) {
-        console.error('generateRecipe Error: GCF URL for recipe generation not found in appConfig.');
+        console.error('generateRecipe Error: GCF URL for recipe generation not found in appConfig after load attempt.');
         throw new Error('Client configuration error: Missing GCF URL.');
     }
 
@@ -92,21 +124,19 @@ export async function generateRecipe(ingredients, model) {
             ingredients: ingredients,
             type: 'broodje',
             model: model,
-            language: 'Nederlands' // Pass language if needed by GCF
+            language: 'Nederlands'
         }),
-        mode: 'cors' // Ensure CORS mode is set
+        mode: 'cors'
     });
 
-    // Use the existing handleResponse for error handling and JSON parsing
     const result = await handleResponse(response);
 
-    // Still invalidate recipe cache if needed
     try {
         sessionStorage.removeItem('recipes');
     } catch (e) {
         console.warn('Failed to remove recipes from sessionStorage:', e);
     }
-    return result; // Result should be { taskId: ..., recipe: {...} } from GCF
+    return result;
 }
 
 export async function getCostBreakdown(taskId) {
@@ -232,13 +262,16 @@ export async function visualizeBroodje(taskId) {
     // Ensure config is loaded
     await ensureConfigLoaded();
 
-    if (!appConfig.gcfVisualizeBroodjeUrl) {
+    // Access the URL from the globally stored config
+    const gcfUrl = window.appConfig?.gcfVisualizeBroodjeUrl; // Corrected access
+
+    if (!gcfUrl) { // Corrected check
         console.error('visualizeBroodje Error: GCF_VISUALIZE_BROODJE_URL not configured.');
         throw new Error('Visualisatie functie is niet geconfigureerd.');
     }
 
-    console.log(`Calling visualize GCF for taskId: ${taskId}`);
-    const response = await fetch(appConfig.gcfVisualizeBroodjeUrl, {
+    console.log(`Calling visualize GCF (${gcfUrl}) for taskId: ${taskId}`); // Log the URL
+    const response = await fetch(gcfUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -264,14 +297,27 @@ export async function visualizeBroodje(taskId) {
 
 // Helper function to load config if not already loaded
 async function ensureConfigLoaded() {
-    if (!appConfig.gcfImageUrl || !appConfig.gcfGenerateBroodjeUrl || !appConfig.gcfVisualizeBroodjeUrl) {
+    // Check if all three URLs are loaded
+    if (!window.appConfig.gcfImageUrl || !window.appConfig.gcfGenerateBroodjeUrl || !window.appConfig.gcfVisualizeBroodjeUrl) {
         console.log('Config not fully loaded, fetching...');
-        await fetchAppConfig(); // Assuming fetchAppConfig is available globally or imported
-        // Re-check after fetching
-        if (!appConfig.gcfImageUrl || !appConfig.gcfGenerateBroodjeUrl || !appConfig.gcfVisualizeBroodjeUrl) {
-            console.error('Failed to load necessary configuration after fetch attempt.');
-            // Depending on the flow, you might throw an error here
-            // or rely on subsequent checks to fail.
+        try {
+            await fetchAppConfig(); // Call the internal fetchAppConfig
+            // Re-check after fetching
+            if (!window.appConfig.gcfImageUrl || !window.appConfig.gcfGenerateBroodjeUrl || !window.appConfig.gcfVisualizeBroodjeUrl) {
+                console.error('Failed to load necessary configuration after fetch attempt.');
+                throw new Error('Kon vereiste configuratie niet laden.');
+            }
+            console.log('Configuration successfully loaded.');
+        } catch (error) {
+            console.error('ensureConfigLoaded failed:', error);
+            // Re-throw the error to be caught by the calling function (generateRecipe, visualizeBroodje, etc.)
+            throw error;
         }
+    } else {
+        console.log('Config already loaded.');
     }
 }
+
+// Make fetchAppConfig available for direct call if needed (e.g., on initial load)
+// Although ensureConfigLoaded should handle most cases.
+// export { fetchAppConfig };
