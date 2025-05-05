@@ -148,8 +148,9 @@ exports.handler = async function (event, context) {
 
                 console.log(`Triggering GCF directly for updated ingredient: ${ingredientName} (ID: ${ingredientId}) via ${gcfUrl}`);
 
-                // Fire and forget
-                fetch(gcfUrl, {
+                // --- MODIFIED: await the fetch call ---
+                await fetch(gcfUrl, {
+                    // -------------------------------------
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -157,18 +158,18 @@ exports.handler = async function (event, context) {
                         ingredient_name: ingredientName
                     })
                 })
-                .then(async response => {
-                    // Log GCF response status, but don't wait for it
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error(`Direct GCF Call Failed (Status: ${response.status}) for updated ingredient ${ingredientId}: ${errorText}`);
-                    } else {
-                        console.log(`Direct GCF triggered successfully (Status: ${response.status}) for updated ingredient ${ingredientId}`);
-                    }
-                })
-                .catch(fetchError => {
-                    console.error(`Error making direct fetch call to GCF for updated ingredient ${ingredientId}:`, fetchError);
-                });
+                    .then(async response => {
+                        // Log GCF response status, but don't wait for it
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error(`Direct GCF Call Failed (Status: ${response.status}) for updated ingredient ${ingredientId}: ${errorText}`);
+                        } else {
+                            console.log(`Direct GCF triggered successfully (Status: ${response.status}) for updated ingredient ${ingredientId}`);
+                        }
+                    })
+                    .catch(fetchError => {
+                        console.error(`Error making direct fetch call to GCF for updated ingredient ${ingredientId}:`, fetchError);
+                    });
             } catch (e) {
                 console.error(`Error initiating direct GCF trigger for updated ingredient (ID: ${id}):`, e);
             }

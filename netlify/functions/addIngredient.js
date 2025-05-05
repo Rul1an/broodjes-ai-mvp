@@ -111,8 +111,9 @@ exports.handler = async function (event, context) {
 
                 console.log(`Triggering GCF directly for new ingredient: ${ingredientName} (ID: ${ingredientId}) via ${gcfUrl}`);
 
-                // Fire and forget
-                fetch(gcfUrl, {
+                // --- MODIFIED: await the fetch call ---
+                await fetch(gcfUrl, {
+                    // -------------------------------------
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
