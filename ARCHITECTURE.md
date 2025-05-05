@@ -25,12 +25,7 @@ The application is built using a combination of a static frontend, serverless fu
     *   **UI Feedback:** Gebruikt laadindicatoren (spinners) en schakelt knoppen uit tijdens API-calls.
 
 *   **Backend - Netlify Functions (`netlify/functions/`):**
-    *   `/api/generateRecipe` (`generateRecipe.js`): Handles recipe generation requests.
-        *   Receives `ingredients` (user idea) and `model` from frontend (type is hardcoded to 'broodje').
-        *   Calls OpenAI API (model selected by user or default) to generate recipe JSON.
-        *   Saves the recipe JSON, idea, status ('completed'), model to the `async_tasks` table.
-        *   Uses Supabase **Service Role Key** for database write.
-        *   Returns `{ taskId: <new_task_id>, recipe: <json_object> }` with `Content-Type: application/json` header.
+    *   ~~`/api/generateRecipe` (`generateRecipe.js`):~~ (Removed - Logic moved to `gcf-generate-broodje` GCF)
     *   `/api/getRecipes` (`getRecipes.js`): Fetches saved recipe data (recipe JSON, cost breakdown text, etc.) from the Supabase `async_tasks` table.
         *   Selects completed tasks with non-null recipes.
         *   Maps DB fields to frontend keys (`id`, `generated_recipe`, `cost_breakdown`, etc.).
@@ -73,12 +68,12 @@ The application is built using a combination of a static frontend, serverless fu
     *   ~~`costUtils.js`:~~ (Removed - Split into `unitUtils.js` and `aiCostUtils.js`)
 
 *   **Backend - Google Cloud Functions (GCF):**
-    *   ~~`gcf-generate-recipe/index.js` (Deployed as `generateRecipe`):~~ (Removed - Logic migrated to Netlify Function `/api/generateRecipe`)
-    *   ~~`gcf-calculate-cost/index.js` (Deployed as `calculateCost`):~~ (Removed - Functionality covered by `/api/getCostBreakdown`)
-    *   `generateIngredientImage` (`google-cloud-functions/generate-ingredient-image/index.js`): Deployed in GCP. Receives `ingredient_id` and `ingredient_name` via HTTP POST. Calls OpenAI Image API to generate an image. Updates the corresponding `ingredients` record in Supabase with the `image_url`.
+    *   `generateBroodjeRecipe` (`google-cloud-functions/gcf-generate-broodje/index.js`): Deployed in GCP. Receives `ingredients`, `type`, `model`, etc. via HTTP POST. Checks cache (`openai_cache` table), calls OpenAI API if miss, parses recipe JSON, saves recipe JSON, idea, model, status='completed' to `async_tasks`, returns `{ taskId: <new_task_id>, recipe: <json_object> }`. Requires CORS handling and appropriate env vars.
+    *   `generateIngredientImage` (`google-cloud-functions/generate-ingredient-image/index.js`): Deployed in GCP. Receives `ingredient_id` and `ingredient_name` via HTTP POST. Calls OpenAI Image API to generate an image. Updates the corresponding `ingredients` record in Supabase with the `image_url`. Requires CORS handling and env vars.
+    *   `visualizeBroodje` (`google-cloud-functions/gcf-visualize-broodje/index.js`): Deployed in GCP. Receives `taskId` via HTTP POST. Fetches recipe data, checks if `broodje_image_url` already exists. If not, calls OpenAI Image API (DALL-E 3) to generate an image of the sandwich. Updates the `async_tasks` record with the new `broodje_image_url`. Returns the `{ imageUrl }`. Requires CORS handling and env vars.
 
 *   **Database (Supabase - PostgreSQL):**
-    *   `async_tasks` table: Primary table tracking recipe generation. Stores `task_id` (UUID), initial idea (`prompt`), status (`status`), generated recipe JSON (`recipe`), final cost breakdown text (`cost_breakdown`), cost calculation type (`cost_calculation_type`), timestamps (`created_at`, `updated_at`), and potentially a separate total cost (`estimated_cost`).
+    *   `async_tasks` table: Primary table tracking recipe generation. Stores `task_id` (UUID), initial idea (`prompt`), status (`status`), generated recipe JSON (`recipe`), final cost breakdown text (`cost_breakdown`), cost calculation type (`cost_calculation_type`), timestamps (`created_at`, `updated_at`), potentially a separate total cost (`estimated_cost`), and **`broodje_image_url`** (nullable URL for generated sandwich image).
     *   ~~`recipes` table:~~ (Removed - Redundant)
     *   `ingredients` table: Stores ingredient names, prices, units, and **image_url** (nullable URL for generated image).
     *   `openai_cache` table: Caches OpenAI API responses based on a hash of the request to reduce costs and latency.
@@ -98,14 +93,16 @@ The application is built using a combination of a static frontend, serverless fu
 ### A. Generate New Recipe
 
 1.  **Frontend:** User enters ingredients/idea, selects model (`gpt-4o` or `gpt-4o-mini`), clicks "Generate".
-2.  **Frontend (`js/views/generateView.js`):** Calls `apiService.generateRecipe` (passing user idea as `ingredients` and the **selected `model`**).
-3.  **Netlify Function (`/api/generateRecipe`):**
-    *   Checks cache based on input (ingredients, model, prompts).
-    *   If cache miss: Calls OpenAI API with the user's prompt and selected model (via `lib/openaiClient.js`).
+2.  **Frontend (`js/views/generateView.js`):**
+    *   Retrieves the `gcfGenerateBroodjeUrl` (via `apiService.getConfig`).
+    *   Calls the `generateBroodjeRecipe` GCF URL directly via `fetch` (POST), passing `ingredients`, `type`='broodje', and `model`.
+3.  **GCF (`generateBroodjeRecipe`):**
+    *   Checks cache in `openai_cache` table based on input payload.
+    *   If cache miss: Calls OpenAI API with the user's prompt and selected model.
     *   Saves successful OpenAI response to cache.
     *   Parses recipe JSON from (cached or new) response.
     *   Saves recipe JSON, idea, model, status='completed' to `async_tasks`.
-    *   Returns `{ recipe: <json_object>, taskId: <new_task_id> }`.
+    *   Returns `{ recipe: <json_object>, taskId: <new_task_id> }` to the frontend.
 4.  **Frontend (`js/views/generateView.js` via `apiService.js`):**
     *   Receives the response.
     *   Calls `recipeListView.displayRecipe` to show the formatted recipe.
@@ -182,6 +179,30 @@ The application is built using a combination of a static frontend, serverless fu
     *   Returns success/failure status.
 4.  **Frontend (`js/views/recipeListView.js`):** Calls `loadRecipes` again to refresh the (now empty) list.
 
+### F. Visualize Broodje (New)
+
+1.  **Frontend (`js/views/recipeListView.js`):** User clicks "Visualiseer Broodje" button on a recipe card.
+2.  **Frontend (`js/views/recipeListView.js`):**
+    *   Starts loading indicator on the button.
+    *   Calls `apiService.visualizeBroodje(taskId)`.
+3.  **Frontend (`js/apiService.js`):**
+    *   Retrieves `appConfig` (calls `/api/getConfig` if needed) to get `gcfVisualizeBroodjeUrl`.
+    *   Makes a POST `fetch` request to the `gcfVisualizeBroodjeUrl`, sending `{ taskId }`.
+4.  **GCF (`visualizeBroodje`):**
+    *   Receives `taskId`.
+    *   Fetches task data (including `recipe`, `prompt`, `broodje_image_url`) from `async_tasks`.
+    *   If `broodje_image_url` exists, returns `{ imageUrl: existing_url }` immediately.
+    *   If not, generates a prompt for DALL-E 3 based on recipe/prompt.
+    *   Calls OpenAI Image API.
+    *   Updates `async_tasks` table with the new `broodje_image_url`.
+    *   Returns `{ imageUrl: new_url }`.
+5.  **Frontend (`js/apiService.js`):** Returns the response (or throws error) to `recipeListView.js`.
+6.  **Frontend (`js/views/recipeListView.js`):**
+    *   Receives `{ imageUrl }`.
+    *   Stops loading indicator.
+    *   Displays the image (e.g., in a modal or dedicated area on the card).
+    *   Handles errors (e.g., displays error message).
+
 ## 3. Environment Variables
 
 Ensure the following are configured correctly:
@@ -189,13 +210,14 @@ Ensure the following are configured correctly:
 *   **Netlify (Site settings > Build & deploy > Environment):**
     *   `OPENAI_API_KEY`
     *   `SUPABASE_URL`
-    *   `SUPABASE_SERVICE_KEY` (Supabase Service Role Key)
-    *   `GCF_IMAGE_GENERATION_URL` (URL for the deployed `generateIngredientImage` GCF)
-    *   `SUPABASE_ANON_KEY` (Used by Supabase client library, though potentially not directly by backend functions anymore)
-*   **GCP (Environment Variables for `generateIngredientImage` GCF):**
-    *   `SUPABASE_URL`
     *   `SUPABASE_SERVICE_KEY`
-    *   `OPENAI_API_KEY`
+    *   `GCF_IMAGE_GENERATION_URL` (URL for the `generateIngredientImage` GCF)
+    *   `GCF_GENERATE_BROODJE_URL` (URL for the `generateBroodjeRecipe` GCF)
+    *   `SUPABASE_ANON_KEY`
+    *   `GCF_VISUALIZE_BROODJE_URL` (URL for the `visualizeBroodje` GCF)
+*   **GCP (Environment Variables for GCFs):**
+    *   Requires `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY` for all GCFs.
+    *   Optionally `ALLOWED_ORIGIN` for CORS configuration.
 
 ## 4. Potential Improvements / Areas for Review
 
@@ -255,7 +277,13 @@ This section tracks areas identified for potential improvement or further invest
     *   **Actie:** Database caching geïmplementeerd via `cacheUtils.js` en `openai_cache` tabel. Functies `generateRecipe`, `refineRecipe`, en AI helpers in `aiCostUtils` checken nu de cache en slaan nieuwe resultaten op.
 *   **Stap 10: Implementeer Asynchrone Beeldgeneratie Ingredienten (Done)**
     *   **Doel:** Voeg afbeeldingen toe aan ingrediënten zonder de UI te blokkeren.
-    *   **Actie:** Setup GCF met CORS. Frontend (`ingredientView.js`) triggert GCF *direct* via `fetch` na succesvolle toevoeging/update via `/api/addIngredient` of `/api/updateIngredient`. GCF updatet `image_url` in Supabase `ingredients` tabel. `/api/getConfig` levert GCF URL aan frontend. *Volgende: Testen image display in `getCostBreakdown`, evt. placeholders, "Visualiseer Broodje" knop.*
+    *   **Actie:** Setup `generateIngredientImage` GCF met CORS. Frontend (`ingredientView.js`) triggert GCF *direct* via `fetch` na succesvolle toevoeging/update via `/api/addIngredient` of `/api/updateIngredient`. GCF updatet `image_url` in Supabase `ingredients` tabel. `/api/getConfig` levert GCF URL aan frontend.
+*   **Stap 11: Verplaats Recept Generatie naar GCF (Done)**
+    *   **Doel:** Los Netlify timeout op voor recept generatie.
+    *   **Actie:** Nieuwe GCF `generateBroodjeRecipe` gemaakt met OpenAI call, caching, en DB insert. Frontend roept deze GCF nu direct aan via URL verkregen van `/api/getConfig`. Oude `/api/generateRecipe` Netlify functie verwijderd.
+*   **Stap 12 (Voorheen deel van Stap 10): Test/Verbeter Image Display & Voeg Features Toe (Next)**
+    *   **Doel:** Afronden image functionaliteit en UI verbeteren.
+    *   **Actie:** Testen image display in `getCostBreakdown`, evt. placeholders toevoegen voor missende/ladende images. Implementeer "Visualiseer Broodje" knop/workflow (nieuwe GCF `visualizeBroodje`, nieuwe DB kolom `broodje_image_url`, aanpassing `/api/getConfig`, frontend logica). Vervang `confirm()` door custom modal. Overweeg strengere frontend input validatie.
 
 ## 5. Improvement Plan (Phased Approach - TEMP)
 
@@ -297,4 +325,10 @@ This section outlines the planned steps for implementing improvements.
     *   **Actie:** Database caching geïmplementeerd via `cacheUtils.js` en `openai_cache` tabel. Functies `generateRecipe`, `refineRecipe`, en AI helpers in `aiCostUtils` checken nu de cache en slaan nieuwe resultaten op.
 *   **Stap 10: Implementeer Asynchrone Beeldgeneratie Ingredienten (Done)**
     *   **Doel:** Voeg afbeeldingen toe aan ingrediënten zonder de UI te blokkeren.
-    *   **Actie:** Setup GCF met CORS. Frontend (`ingredientView.js`) triggert GCF *direct* via `fetch` na succesvolle toevoeging/update via `/api/addIngredient` of `/api/updateIngredient`. GCF updatet `image_url` in Supabase `ingredients` tabel. `/api/getConfig` levert GCF URL aan frontend. *Volgende: Testen image display in `getCostBreakdown`, evt. placeholders, "Visualiseer Broodje" knop.*
+    *   **Actie:** Setup `generateIngredientImage` GCF met CORS. Frontend (`ingredientView.js`) triggert GCF *direct* via `fetch` na succesvolle toevoeging/update via `/api/addIngredient` of `/api/updateIngredient`. GCF updatet `image_url` in Supabase `ingredients` tabel. `/api/getConfig` levert GCF URL aan frontend.
+*   **Stap 11: Verplaats Recept Generatie naar GCF (Done)**
+    *   **Doel:** Los Netlify timeout op voor recept generatie.
+    *   **Actie:** Nieuwe GCF `generateBroodjeRecipe` gemaakt met OpenAI call, caching, en DB insert. Frontend roept deze GCF nu direct aan via URL verkregen van `/api/getConfig`. Oude `/api/generateRecipe` Netlify functie verwijderd.
+*   **Stap 12 (Voorheen deel van Stap 10): Test/Verbeter Image Display & Voeg Features Toe (Next)**
+    *   **Doel:** Afronden image functionaliteit en UI verbeteren.
+    *   **Actie:** Testen image display in `getCostBreakdown`, evt. placeholders toevoegen voor missende/ladende images. Implementeer "Visualiseer Broodje" knop/workflow (nieuwe GCF `visualizeBroodje`, nieuwe DB kolom `broodje_image_url`, aanpassing `/api/getConfig`, frontend logica). Vervang `confirm()` door custom modal. Overweeg strengere frontend input validatie.

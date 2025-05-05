@@ -1,0 +1,14 @@
+{
+    "name": "gcf-visualize-broodje",
+    "version": "1.0.0",
+    "description": "Generates an image visualization for a Broodjes App recipe.",
+    "main": "index.js",
+    "dependencies": {
+        "@google-cloud/functions-framework": "^3.0.0",
+        "@supabase/supabase-js": "^2.39.8",
+        "openai": "^4.29.0"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}
