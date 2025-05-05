@@ -16,6 +16,9 @@ function generatePromptHash(input) {
     } else if (typeof input === 'object' && input !== null) {
         // Ensure consistent key order for object hashing
         inputString = JSON.stringify(input, Object.keys(input).sort());
+        // --- DEBUG LOG ---
+        console.log("[Cache Debug] String being hashed:", inputString);
+        // ---------------
     } else {
         // Handle other types or null/undefined if necessary, or throw error
         inputString = String(input); // Fallback: convert to string
