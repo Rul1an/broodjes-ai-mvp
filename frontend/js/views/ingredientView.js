@@ -1,10 +1,9 @@
 import * as api from '../apiService.js';
 import * as ui from '../uiUtils.js';
 import { showConfirmationModal } from '../uiUtils.js';
-import { fetchAppConfig } from './generateView.js';
 
-// GCF Trigger URL
-let gcfTriggerUrl = null;
+// GCF Trigger URL - We halen dit nu op via apiService wanneer nodig
+// let gcfTriggerUrl = null; // No longer needed as module variable
 
 // DOM Elements
 let ingredientNameInput;
@@ -66,15 +65,27 @@ export async function loadIngredients() {
 
 // Function to trigger the GCF for image generation
 const triggerGcfImageGeneration = async (ingredientId, ingredientName) => {
-    if (!gcfTriggerUrl) {
-        console.error("GCF Trigger URL not available.");
-        // Optionally display a user-facing error or retry fetching the config
+    // Ensure config is loaded before accessing it
+    try {
+        await api.ensureConfigLoaded(); // Call the helper from apiService
+    } catch (configError) {
+        console.error("Failed to ensure config loaded for GCF trigger:", configError);
+        ui.displayErrorToast("Kon configuratie niet laden voor beeldgeneratie.");
+        return; // Stop if config fails
+    }
+
+    // Access the URL via the global appConfig object (managed by apiService)
+    const gcfUrl = window.appConfig?.gcfImageUrl;
+
+    if (!gcfUrl) {
+        console.error("GCF Trigger URL (gcfImageUrl) not available in appConfig.");
+        ui.displayErrorToast("Beeldgeneratie URL is niet geconfigureerd.");
         return;
     }
 
-    console.log(`Triggering GCF for ingredient: ${ingredientName} (ID: ${ingredientId})`);
+    console.log(`Triggering GCF (${gcfUrl}) for ingredient: ${ingredientName} (ID: ${ingredientId})`);
     try {
-        const response = await fetch(gcfTriggerUrl, {
+        const response = await fetch(gcfUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -86,13 +97,10 @@ const triggerGcfImageGeneration = async (ingredientId, ingredientName) => {
         });
 
         if (!response.ok) {
-            // Log the error but don't necessarily block the user
             console.error(`GCF trigger failed with status ${response.status}:`, await response.text());
             ui.displayErrorToast(`Beeldgeneratie trigger mislukt (status ${response.status}).`);
         } else {
             console.log("GCF triggered successfully.");
-            // Optional: display a success message, maybe a subtle one
-            // ui.displayInfoToast(`Beeldgeneratie gestart voor ${ingredientName}.`);
         }
     } catch (error) {
         console.error("Error triggering GCF:", error);
@@ -200,9 +208,9 @@ export function setupIngredientView() {
     addIngredientBtn.addEventListener('click', handleAddIngredient);
     ingredientTableBody.addEventListener('click', handleIngredientTableClicks);
 
-    // Fetch the config when the view is set up
-    fetchAppConfig();
+    // Remove the call to the non-existent fetchAppConfig
+    // fetchAppConfig();
+    // Config is now loaded on demand via ensureConfigLoaded()
 
     console.log("Ingredient View setup complete.");
-    // Note: loadIngredients() is called by the navigation module when the view becomes active.
 }
