@@ -144,8 +144,8 @@ const handleAddIngredient = async () => {
         console.log("Ingredient added successfully:", data);
 
         // Trigger GCF after successful addition
-        if (data && data.newIngredient && data.newIngredient.id && data.newIngredient.name) {
-            triggerGcfImageGeneration(data.newIngredient.id, data.newIngredient.name); // Call the trigger function
+        if (data && data.ingredient && data.ingredient.id && data.ingredient.name) {
+            triggerGcfImageGeneration(data.ingredient.id, data.ingredient.name); // Use data.ingredient
         } else {
             console.warn("Could not trigger GCF: Missing ID or Name in addIngredient response.", data);
         }
