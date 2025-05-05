@@ -14,8 +14,8 @@ function generatePromptHash(input) {
     if (typeof input === 'string') {
         inputString = input;
     } else if (typeof input === 'object' && input !== null) {
-        // Ensure consistent key order for object hashing
-        inputString = JSON.stringify(input, Object.keys(input).sort());
+        // Use standard stringify - should be consistent enough in Node.js
+        inputString = JSON.stringify(input); // REMOVED sorting replacer
         // --- DEBUG LOG ---
         console.log("[Cache Debug] String being hashed:", inputString);
         // ---------------
