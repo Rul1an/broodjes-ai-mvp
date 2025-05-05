@@ -103,8 +103,8 @@ const fetchAppConfig = async () => {
     console.log("Fetching application config...");
     try {
         const config = await api.getConfig();
-        if (config && config.gcfTriggerUrl) {
-            gcfTriggerUrl = config.gcfTriggerUrl;
+        if (config && config.gcfImageUrl) {
+            gcfTriggerUrl = config.gcfImageUrl;
             console.log("GCF Trigger URL fetched:", gcfTriggerUrl);
         } else {
             console.error("GCF Trigger URL not found in config response:", config);
