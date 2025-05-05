@@ -102,34 +102,41 @@ exports.handler = async function (event, context) {
         // We capture the returned data which includes the new ID
         const newIngredient = data;
 
-        // --- Trigger GCF Image Generation Asynchronously ---
-        if (process.env.GCF_IMAGE_GENERATION_URL && process.env.URL) {
+        // --- Trigger GCF Image Generation Directly ---
+        if (process.env.GCF_IMAGE_GENERATION_URL) {
             try {
-                const triggerUrl = new URL('/api/triggerImage', process.env.URL).toString();
-                console.log(`Triggering async image generation for new ingredient: ${newIngredient.id} via ${triggerUrl}`);
-                // Fire and forget - don't await
-                fetch(triggerUrl, {
+                const gcfUrl = process.env.GCF_IMAGE_GENERATION_URL;
+                const ingredientId = newIngredient.id;
+                const ingredientName = newIngredient.name; // Name is already available
+
+                console.log(`Triggering GCF directly for new ingredient: ${ingredientName} (ID: ${ingredientId}) via ${gcfUrl}`);
+
+                // Fire and forget
+                fetch(gcfUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ingredient_id: newIngredient.id })
+                    body: JSON.stringify({
+                        ingredient_id: ingredientId,
+                        ingredient_name: ingredientName
+                    })
                 })
                     .then(async response => {
-                        // ADDED: Log response status from triggerImage
-                        console.log(`triggerImage call completed with status: ${response.status}`);
+                        // Log GCF response status, but don't wait for it
                         if (!response.ok) {
                             const errorText = await response.text();
-                            console.error(`triggerImage call failed (Status: ${response.status}): ${errorText}`);
+                            console.error(`Direct GCF Call Failed (Status: ${response.status}) for ingredient ${ingredientId}: ${errorText}`);
+                        } else {
+                            console.log(`Direct GCF triggered successfully (Status: ${response.status}) for ingredient ${ingredientId}`);
                         }
                     })
-                    .catch(triggerError => {
-                        // Log errors from the fetch call itself
-                        console.error(`Failed to initiate fetch call to triggerImage for ingredient ${newIngredient.id}:`, triggerError);
+                    .catch(fetchError => {
+                        console.error(`Error making direct fetch call to GCF for ingredient ${ingredientId}:`, fetchError);
                     });
             } catch (e) {
-                console.error(`Error initiating trigger for image generation (ingredient ${newIngredient.id}):`, e);
+                console.error(`Error initiating direct GCF trigger for new ingredient (ID: ${newIngredient.id}):`, e);
             }
         } else {
-            console.warn('GCF_IMAGE_GENERATION_URL or Netlify URL env var not set, skipping image generation trigger.');
+            console.warn('GCF_IMAGE_GENERATION_URL env var not set, skipping image generation trigger.');
         }
         // --- End Trigger ---
 
@@ -144,4 +151,5 @@ exports.handler = async function (event, context) {
         // Standard error for generic catch block
         return { statusCode: 500, body: JSON.stringify({ error: { message: 'Internal Server Error', code: 'INTERNAL_SERVER_ERROR', details: e.message } }), headers: { 'Content-Type': 'application/json' } };
     }
-};
+
+}
