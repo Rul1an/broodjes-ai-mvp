@@ -8,6 +8,7 @@ const DELETE_INGREDIENT_URL = '/api/deleteIngredient';
 const REFINE_RECIPE_URL = '/api/refineRecipe';
 const CLEAR_RECIPES_URL = '/api/clearRecipes';
 const GET_COST_BREAKDOWN_URL = '/api/getCostBreakdown';
+const GET_CONFIG_URL = '/api/getConfig';
 
 // Updated helper function for handling fetch responses
 async function handleResponse(response) {
@@ -55,6 +56,23 @@ async function handleResponse(response) {
 }
 
 // --- Exported API Functions ---
+
+// --- Config (NEW) ---
+export async function getConfig() {
+    const url = GET_CONFIG_URL;
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        // Use the existing handleResponse for consistency
+        return await handleResponse(response);
+    } catch (error) {
+        console.error(`Error in getConfig from ${url}:`, error);
+        // Re-throw the error object/payload provided by handleResponse or fetch error
+        throw error;
+    }
+}
 
 // --- Recipes ---
 
