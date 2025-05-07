@@ -23,7 +23,15 @@
     }
 }
 
-/* Confirmation Modal Styles */
+/* Feedback message styling */
+#ingredient-feedback {
+    margin-top: 10px;
+    font-weight: bold;
+}
+
+/* --- Modal Styles --- */
+
+/* Base modal styles */
 .modal {
     display: none;
     /* Hidden by default */
@@ -62,6 +70,7 @@
     text-align: center;
 }
 
+/* Confirmation Modal Specific Styles */
 #modal-message {
     margin-bottom: 20px;
     font-size: 1.1em;
@@ -80,7 +89,6 @@
     /* Ensure buttons have some width */
 }
 
-/* Make secondary button distinct */
 .button.secondary {
     background-color: #ccc;
     color: #333;
@@ -130,7 +138,7 @@
     /* Center image */
 }
 
-/* Ingredient Image Styles (within cost breakdown) */
+/* Ingredient Image Styles (already present, keep them) */
 .cost-content img {
     width: 50px;
     /* Or desired size */
@@ -146,10 +154,8 @@
     border-radius: 4px;
 }
 
-/* Style for broken ingredient images */
 .cost-content img.broken-image {
     content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eee'/%3E%3Ctext x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='12' fill='%23aaa'%3Eno img%3C/text%3E%3C/svg%3E");
-    /* Simple SVG placeholder */
     object-fit: contain;
     /* Make SVG fit */
     background-color: #f8f8f8;
