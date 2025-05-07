@@ -41,13 +41,13 @@
     /* Enable scroll if needed */
     background-color: rgba(0, 0, 0, 0.5);
     /* Black w/ opacity */
-    justify-content: center;
-    align-items: center;
 }
 
 .modal.active {
     display: flex;
     /* Show the modal */
+    justify-content: center;
+    align-items: center;
 }
 
 .modal-content {
