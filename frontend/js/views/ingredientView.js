@@ -162,24 +162,23 @@ async function handleDeleteIngredient(event) {
     const ingredientId = button.dataset.id;
     const ingredientName = button.closest('tr').querySelector('td:first-child').textContent;
 
-    showConfirmationModal(`Weet je zeker dat je ingrediënt "${ingredientName}" wilt verwijderen?`, async () => {
+    const confirmed = await showConfirmationModal(`Weet je zeker dat je ingrediënt "${ingredientName}" wilt verwijderen?`);
+
+    if (confirmed) {
         console.log(`Confirmed deletion for ingredient: ${ingredientName} (ID: ${ingredientId})`);
         ui.setButtonLoading(button, true);
         try {
             await api.deleteIngredient(ingredientId);
             console.log(`Successfully deleted ingredient: ${ingredientName}`);
-            // Reload ingredients to reflect the change
             await loadIngredients();
         } catch (error) {
             console.error(`Error deleting ingredient ${ingredientName}:`, error);
             ui.displayErrorToast(error.message || 'Kon ingrediënt niet verwijderen.');
-            ui.setButtonLoading(button, false); // Only reset loading on error, row removal handles success
+            ui.setButtonLoading(button, false);
         }
-        // No need to manually reset loading state here if row is removed on success
-    }, () => {
+    } else {
         console.log(`Cancelled deletion for ingredient: ${ingredientName}`);
-        // Optional: Add any logic needed on cancellation
-    });
+    }
 }
 
 // --- Initialization ---

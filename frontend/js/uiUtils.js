@@ -59,76 +59,82 @@ export function displayErrorToast(message) {
     alert(`Fout: ${message}`);
 }
 
+let activeConfirmationResolver = null;
+let activeImageModalCloseHandler = null;
+let activeModalOutsideClickHandler = null;
+
+// Get modal elements once
+const confirmationModal = document.getElementById('confirmation-modal');
+const modalMessageElement = document.getElementById('modal-message');
+const modalConfirmButton = document.getElementById('modal-confirm-button');
+const modalCancelButton = document.getElementById('modal-cancel-button');
+
+const imageDisplayModal = document.getElementById('image-modal');
+const modalImageElement = document.getElementById('modal-image');
+const modalCaptionElement = document.getElementById('image-modal-caption');
+const imageModalCloseButton = imageDisplayModal?.querySelector('.close-image-modal'); // Use optional chaining for safety
+
+// Ensure modals are hidden on script load, just in case CSS is slow or overridden
+if (confirmationModal) confirmationModal.classList.remove('active');
+if (imageDisplayModal) imageDisplayModal.classList.remove('active');
+
 /**
  * Displays a confirmation modal and executes callbacks based on user choice.
  * @param {string} message - The message to display in the modal.
- * @param {function} onConfirm - Callback function to execute if the user confirms.
- * @param {function} [onCancel] - Optional callback function to execute if the user cancels.
+ * @returns {Promise<boolean>} - Promise that resolves to true if confirmed, false if cancelled.
  */
-export function showConfirmationModal(message, onConfirm, onCancel) {
-    const modal = document.getElementById('confirmation-modal');
-    const messageElement = document.getElementById('modal-message');
-    const confirmButton = document.getElementById('modal-confirm-button');
-    const cancelButton = document.getElementById('modal-cancel-button');
-
-    if (!modal || !messageElement || !confirmButton || !cancelButton) {
-        console.error('Modal elements not found!');
-        // Fallback to default confirm if modal is broken
-        if (window.confirm(message)) {
-            onConfirm();
+export function showConfirmationModal(message) {
+    return new Promise((resolve) => {
+        if (!confirmationModal || !modalMessageElement || !modalConfirmButton || !modalCancelButton) {
+            console.error('Confirmation modal elements not found!');
+            // Fallback to default confirm if modal is broken
+            resolve(window.confirm(message));
+            return;
         }
-        return;
-    }
 
-    // Set the message
-    messageElement.textContent = message;
+        modalMessageElement.textContent = message;
 
-    // Function to hide modal and clean up listeners
-    const cleanup = () => {
-        modal.classList.remove('active');
-        confirmButton.removeEventListener('click', handleConfirm);
-        cancelButton.removeEventListener('click', handleCancel);
-        // Optional: Add listener for clicking outside the modal content to cancel
-        modal.removeEventListener('click', handleOutsideClick);
-    };
-
-    // Event handler for confirmation
-    const handleConfirm = () => {
-        cleanup();
-        onConfirm(); // Execute the confirmation callback
-    };
-
-    // Event handler for cancellation
-    const handleCancel = () => {
-        cleanup();
-        if (onCancel) {
-            onCancel(); // Execute the cancel callback if provided
+        // Clean up previous listeners if any
+        if (activeConfirmationResolver) {
+            modalConfirmButton.removeEventListener('click', activeConfirmationResolver.handleConfirm);
+            modalCancelButton.removeEventListener('click', activeConfirmationResolver.handleCancel);
+            confirmationModal.removeEventListener('click', activeModalOutsideClickHandler);
         }
-    };
 
-    // Optional: Handle clicks outside the modal content
-    const handleOutsideClick = (event) => {
-        if (event.target === modal) { // Check if the click was on the overlay itself
-            handleCancel();
-        }
-    };
+        const handleConfirm = () => {
+            cleanup();
+            resolve(true);
+        };
 
-    // Remove previous listeners (important if modal is reused rapidly)
-    // Note: A more robust approach might involve cloning and replacing nodes,
-    // but this works for simple cases.
-    confirmButton.replaceWith(confirmButton.cloneNode(true));
-    cancelButton.replaceWith(cancelButton.cloneNode(true));
-    // Re-select buttons after cloning
-    const newConfirmButton = document.getElementById('modal-confirm-button');
-    const newCancelButton = document.getElementById('modal-cancel-button');
+        const handleCancel = () => {
+            cleanup();
+            resolve(false);
+        };
 
-    // Add new listeners
-    newConfirmButton.addEventListener('click', handleConfirm);
-    newCancelButton.addEventListener('click', handleCancel);
-    modal.addEventListener('click', handleOutsideClick);
+        const handleModalClick = (event) => {
+            if (event.target === confirmationModal) {
+                handleCancel();
+            }
+        };
 
-    // Show the modal
-    modal.classList.add('active');
+        const cleanup = () => {
+            confirmationModal.classList.remove('active');
+            modalConfirmButton.removeEventListener('click', handleConfirm);
+            modalCancelButton.removeEventListener('click', handleCancel);
+            confirmationModal.removeEventListener('click', handleModalClick);
+            activeConfirmationResolver = null;
+            activeModalOutsideClickHandler = null;
+        };
+
+        activeConfirmationResolver = { handleConfirm, handleCancel };
+        activeModalOutsideClickHandler = handleModalClick;
+
+        modalConfirmButton.addEventListener('click', handleConfirm);
+        modalCancelButton.addEventListener('click', handleCancel);
+        confirmationModal.addEventListener('click', handleModalClick);
+
+        confirmationModal.classList.add('active');
+    });
 }
 
 /**
@@ -137,40 +143,43 @@ export function showConfirmationModal(message, onConfirm, onCancel) {
  * @param {string} [caption] - Optional caption for the image.
  */
 export function showImageModal(imageUrl, caption = 'Gegenereerd beeld') {
-    const modal = document.getElementById('image-modal');
-    const modalImage = document.getElementById('modal-image');
-    const captionElement = document.getElementById('image-modal-caption');
-    const closeButton = modal.querySelector('.close-image-modal');
-
-    if (!modal || !modalImage || !captionElement || !closeButton) {
+    if (!imageDisplayModal || !modalImageElement || !modalCaptionElement || !imageModalCloseButton) {
         console.error('Image modal elements not found!');
-        // Fallback or alternative display if needed
-        window.open(imageUrl, '_blank'); // Open in new tab as fallback
+        window.open(imageUrl, '_blank');
         return;
     }
 
-    modalImage.src = imageUrl;
-    modalImage.alt = caption;
-    captionElement.textContent = caption;
+    modalImageElement.src = imageUrl;
+    modalImageElement.alt = caption;
+    modalCaptionElement.textContent = caption;
 
-    const close = () => {
-        modal.classList.remove('active');
-        closeButton.removeEventListener('click', close);
-        modal.removeEventListener('click', handleOutsideClick);
+    // Clean up previous listeners if any
+    if (activeImageModalCloseHandler) {
+        imageModalCloseButton.removeEventListener('click', activeImageModalCloseHandler);
+        imageDisplayModal.removeEventListener('click', activeModalOutsideClickHandler);
+    }
+
+    const handleClose = () => {
+        imageDisplayModal.classList.remove('active');
+        imageModalCloseButton.removeEventListener('click', handleClose);
+        imageDisplayModal.removeEventListener('click', handleModalClick);
+        activeImageModalCloseHandler = null;
+        activeModalOutsideClickHandler = null;
     };
 
-    const handleOutsideClick = (event) => {
-        if (event.target === modal) { // Click on overlay closes modal
-            close();
+    const handleModalClick = (event) => {
+        if (event.target === imageDisplayModal) {
+            handleClose();
         }
     };
 
-    // Add listeners
-    closeButton.addEventListener('click', close);
-    modal.addEventListener('click', handleOutsideClick);
+    activeImageModalCloseHandler = handleClose;
+    activeModalOutsideClickHandler = handleModalClick;
 
-    // Show the modal
-    modal.classList.add('active');
+    imageModalCloseButton.addEventListener('click', handleClose);
+    imageDisplayModal.addEventListener('click', handleModalClick);
+
+    imageDisplayModal.classList.add('active');
 }
 
 // Ensure other exports are kept if they exist
