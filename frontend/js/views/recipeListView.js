@@ -246,25 +246,25 @@ export async function loadRecipes() {
 const handleClearAllRecipes = async () => {
     const button = document.getElementById('clear-all-recipes-btn');
 
-    ui.showConfirmationModal('Weet je zeker dat je ALLE opgeslagen recepten wilt verwijderen? Dit kan niet ongedaan gemaakt worden.', async () => {
+    const confirmed = await ui.showConfirmationModal('Weet je zeker dat je ALLE opgeslagen recepten wilt verwijderen? Dit kan niet ongedaan gemaakt worden.');
+
+    if (confirmed) {
         console.log('Confirmed clearing all recipes.');
         ui.setButtonLoading(button, true);
         try {
             await api.clearAllRecipes();
             console.log('Successfully cleared all recipes.');
             await loadRecipes(); // Refresh the list (should be empty now)
-            ui.displayErrorToast('Alle recepten zijn verwijderd.', 'success'); // Use toast for success feedback
+            ui.displayErrorToast('Alle recepten zijn verwijderd.', 'success');
         } catch (error) {
             console.error('Error clearing recipes:', error);
             ui.displayErrorToast(error.message || 'Kon recepten niet verwijderen.');
         } finally {
-            // Reset button state regardless of outcome, as the action is complete
             ui.setButtonLoading(button, false);
         }
-    }, () => {
+    } else {
         console.log('Cancelled clearing all recipes.');
-        // No action needed on cancel
-    });
+    }
 };
 
 // --- Initialization ---
