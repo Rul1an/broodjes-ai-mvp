@@ -29,100 +29,99 @@
     font-weight: bold;
 }
 
-/* --- Modal Styles --- */
+/* ================= */
+/* === MODAL CSS === */
+/* ================= */
 
-/* Base modal styles */
+/* Base modal container - hidden by default */
 .modal {
     display: none;
-    /* Hidden by default */
     position: fixed;
-    /* Stay in place */
     z-index: 1000;
-    /* Sit on top */
     left: 0;
     top: 0;
     width: 100%;
-    /* Full width */
     height: 100%;
-    /* Full height */
     overflow: auto;
-    /* Enable scroll if needed */
     background-color: rgba(0, 0, 0, 0.5);
-    /* Black w/ opacity */
+    /* Semi-transparent background */
 }
 
+/* Style for when the modal is active/shown */
 .modal.active {
     display: flex;
-    /* Show the modal */
     justify-content: center;
     align-items: center;
 }
 
+/* General modal content box */
 .modal-content {
     background-color: #fefefe;
     margin: auto;
     padding: 30px;
-    border: 1px solid #888;
-    width: 80%;
-    max-width: 400px;
+    border: 1px solid #aaa;
+    width: 85%;
+    max-width: 450px;
     border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
     text-align: center;
+    position: relative;
+    /* Needed for potential close buttons inside */
 }
 
-/* Confirmation Modal Specific Styles */
+/* Styles specific to the Confirmation Modal */
 #modal-message {
-    margin-bottom: 20px;
-    font-size: 1.1em;
+    margin-bottom: 25px;
+    font-size: 1.15em;
+    line-height: 1.5;
 }
 
 .modal-buttons {
     display: flex;
     justify-content: space-around;
     gap: 15px;
-    /* Add space between buttons */
 }
 
 .modal-buttons button {
     padding: 10px 20px;
     min-width: 100px;
-    /* Ensure buttons have some width */
+    border-radius: 5px;
 }
 
-.button.secondary {
-    background-color: #ccc;
-    color: #333;
-    border-color: #bbb;
+/* Confirmation modal secondary (Cancel) button */
+.modal-buttons .button.secondary {
+    background-color: #6c757d;
+    /* Grey */
+    border-color: #6c757d;
+    color: white;
 }
 
-.button.secondary:hover {
-    background-color: #bbb;
+.modal-buttons .button.secondary:hover {
+    background-color: #5a6268;
+    border-color: #545b62;
 }
 
-/* Image Modal Specific Styles */
+/* Styles specific to the Image Display Modal */
 .image-modal-content {
-    padding: 10px;
-    /* Less padding for image */
-    max-width: 90%;
-    max-height: 90%;
-    background-color: #fff;
-    /* Ensure background */
-    position: relative;
-    /* For positioning the close button */
+    padding: 15px;
+    max-width: 90vw;
+    /* Limit width based on viewport */
+    max-height: 90vh;
+    /* Limit height based on viewport */
     width: auto;
-    /* Adjust width based on image */
     height: auto;
-    /* Adjust height based on image */
+    background-color: #fff;
 }
 
 .close-image-modal {
     position: absolute;
-    top: 10px;
-    right: 25px;
-    color: #555;
-    font-size: 35px;
+    top: 5px;
+    right: 15px;
+    color: #777;
+    font-size: 30px;
     font-weight: bold;
     cursor: pointer;
+    line-height: 1;
 }
 
 .close-image-modal:hover,
@@ -133,9 +132,16 @@
 
 #modal-image {
     display: block;
-    /* Prevent extra space below image */
-    margin: 0 auto;
-    /* Center image */
+    max-width: 100%;
+    max-height: calc(90vh - 80px);
+    /* Adjust based on padding/caption */
+    margin: 0 auto 10px auto;
+    /* Center image and add space below */
+}
+
+#image-modal-caption {
+    font-size: 0.9em;
+    color: #555;
 }
 
 /* Ingredient Image Styles (already present, keep them) */
