@@ -43,7 +43,8 @@
     width: 100%;
     height: 100%;
     overflow: auto;
-    background-color: rgba(0,0,0,0.5); /* Semi-transparent background */
+    background-color: rgba(0, 0, 0, 0.5);
+    /* Semi-transparent background */
 }
 
 /* Style for when the modal is active/shown */
@@ -62,9 +63,10 @@
     width: 85%;
     max-width: 450px;
     border-radius: 8px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
     text-align: center;
-    position: relative; /* Needed for potential close buttons inside */
+    position: relative;
+    /* Needed for potential close buttons inside */
 }
 
 /* Styles specific to the Confirmation Modal */
@@ -88,7 +90,8 @@
 
 /* Confirmation modal secondary (Cancel) button */
 .modal-buttons .button.secondary {
-    background-color: #6c757d; /* Grey */
+    background-color: #6c757d;
+    /* Grey */
     border-color: #6c757d;
     color: white;
 }
@@ -101,8 +104,10 @@
 /* Styles specific to the Image Display Modal */
 .image-modal-content {
     padding: 15px;
-    max-width: 90vw; /* Limit width based on viewport */
-    max-height: 90vh; /* Limit height based on viewport */
+    max-width: 90vw;
+    /* Limit width based on viewport */
+    max-height: 90vh;
+    /* Limit height based on viewport */
     width: auto;
     height: auto;
     background-color: #fff;
@@ -128,8 +133,10 @@
 #modal-image {
     display: block;
     max-width: 100%;
-    max-height: calc(90vh - 80px); /* Adjust based on padding/caption */
-    margin: 0 auto 10px auto; /* Center image and add space below */
+    max-height: calc(90vh - 80px);
+    /* Adjust based on padding/caption */
+    margin: 0 auto 10px auto;
+    /* Center image and add space below */
 }
 
 #image-modal-caption {
@@ -141,18 +148,28 @@
 
 /* Ingredient Image Styles (check if already present, keep them) */
 .cost-content img {
-    width: 50px; /* Or desired size */
+    width: 50px;
+    /* Or desired size */
     height: 50px;
-    object-fit: cover; /* Scale image nicely */
-    vertical-align: middle; /* Align with text */
+    object-fit: cover;
+    /* Scale image nicely */
+    vertical-align: middle;
+    /* Align with text */
     margin-right: 5px;
-    background-color: #eee; /* Placeholder background */
+    background-color: #eee;
+    /* Placeholder background */
     border: 1px solid #ddd;
     border-radius: 4px;
 }
 
 .cost-content img.broken-image {
     content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eee'/%3E%3Ctext x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='12' fill='%23aaa'%3Eno img%3C/text%3E%3C/svg%3E");
-    object-fit: contain; /* Make SVG fit */
+    object-fit: contain;
+    /* Make SVG fit */
     background-color: #f8f8f8;
+}
+
+body {
+    border: 10px solid lime !important;
+    font-family: sans-serif;
 }
