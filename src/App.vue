@@ -40,13 +40,6 @@ const showModal = ref<boolean>(false);
 const modalImageUrl = ref<string>('');
 const modalTitle = ref<string>('');
 
-// Type voor de globale window functie
-declare global {
-  interface Window {
-    displayGlobalModal: (imageUrl: string, title: string) => void;
-  }
-}
-
 // Functie om modal te tonen
 const displayModal = (imageUrl: string, title: string): void => {
   modalImageUrl.value = imageUrl;
