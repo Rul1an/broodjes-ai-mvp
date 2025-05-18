@@ -58,8 +58,8 @@ functions.http('visualizeBroodje', async (req, res) => {
         console.log(`Fetching recipe for taskId: ${taskId}`);
         const { data: taskData, error: fetchError } = await supabase
             .from('async_tasks')
-            .select('recipe, prompt, broodje_image_url') // Fetch recipe JSON, prompt, and existing image URL
-            .eq('id', taskId)
+            .select('recipe, idea, broodje_image_url') // Corrected: Select 'idea' instead of 'prompt'
+            .eq('task_id', taskId)
             .single();
 
         if (fetchError) {
@@ -79,10 +79,10 @@ functions.http('visualizeBroodje', async (req, res) => {
         }
 
         const recipeJson = taskData.recipe;
-        const originalPrompt = taskData.prompt; // Use original prompt for context if needed
+        const originalIdea = taskData.idea; // Use the correct field name
 
         // 2. Generate a prompt for DALL-E
-        let imagePrompt = `A delicious-looking, photorealistic image of a ${recipeJson.naam || 'sandwich'} based on the following description: ${originalPrompt}. Focus on the sandwich itself, perhaps on a simple plate or cutting board.`;
+        let imagePrompt = `A delicious-looking, photorealistic image of a ${recipeJson.naam || 'sandwich'} based on the following description: ${originalIdea}. Focus on the sandwich itself, perhaps on a simple plate or cutting board.`;
         imagePrompt = imagePrompt.substring(0, 990); // DALL-E 3 prompt limit
         console.log(`Generated DALL-E prompt: ${imagePrompt}`);
 

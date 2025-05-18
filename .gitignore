@@ -73,3 +73,6 @@ __pycache__/
 
 gcf_env.yaml
 
+# Ignore GCF environment files
+google-cloud-functions/*/*.yaml
+
