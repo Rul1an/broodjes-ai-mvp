@@ -22,6 +22,9 @@ build/
 *.swp
 *.swo
 
+# Node.js
+node_modules/
+
 # OS specific files
 .DS_Store
 Thumbs.db
