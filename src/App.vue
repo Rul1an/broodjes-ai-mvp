@@ -56,7 +56,7 @@ const displayModal = (imageUrl: string, title: string): void => {
 
 // Voeg de functie toe aan het window object bij het mounten
 onMounted(() => {
-  window.displayGlobalModal = displayModal;
+  (window as any).displayGlobalModal = displayModal;
 });
 
 // Verwijder de functie van het window object bij het unmounten
