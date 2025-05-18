@@ -7,25 +7,23 @@ This document outlines the current technical architecture, component setup, and 
 The application is built using a combination of a static frontend, serverless functions (Netlify & Google Cloud), and a Supabase database backend.
 
 *   **Frontend:**
-    *   Files: `frontend/index.html`, `frontend/styles.css`, `frontend/js/` (directory)
-    *   Technology: Vanilla JavaScript (ES Modules), HTML, CSS
-    *   Structure: Modular JavaScript with `js/main.js` as the entry point.
-        *   `js/main.js`: Initializes the application and loads other modules.
-        *   `js/apiService.js`: Handles all communication with the backend Netlify functions.
-        *   `js/uiUtils.js`: Contains helpers for common UI tasks (loading indicators, button states).
-        *   `js/utils.js`: Contains non-DOM utility functions (text formatting, data extraction).
-        *   `js/views/navigation.js`: Manages view switching logic.
-        *   `js/views/generateView.js`: Handles logic for the recipe generation form, including **passing the selected AI model** to the backend.
-        *   `js/views/recipeListView.js`: Handles displaying, loading, refining, and clearing saved recipes.
-        *   `js/views/ingredientView.js`: Handles displaying and managing ingredients.
-    *   Hosting: Netlify Static Site Hosting
-    *   Functionality: Handles user input, displays data, triggers backend operations via API calls organized in modules.
-    *   **Caching:** Gebruikt `sessionStorage` om de resultaten van `getIngredients` en `getRecipes` te cachen. Cache wordt automatisch geïnvalideerd bij relevante mutaties (toevoegen/verwijderen/genereren/refinen).
-    *   **Error Handling:** Vangt errors van `apiService` op, toont gebruikersvriendelijke meldingen via `uiUtils.displayErrorToast`.
-    *   **UI Feedback:** Gebruikt laadindicatoren (spinners) en schakelt knoppen uit tijdens API-calls.
+    *   Files: `broodjes-app-vue/index.html`, `broodjes-app-vue/src/main.js` (entry point), `broodjes-app-vue/src/App.vue` (root component), `broodjes-app-vue/src/components/` (reusable UI components), `broodjes-app-vue/src/views/` (page-level components, indien gebruikt), `broodjes-app-vue/src/router/index.js` (Vue Router config), `broodjes-app-vue/src/services/apiService.js` (API communication). Potentially `broodjes-app-vue/public/` for static assets.
+    *   Technology: Vue 3 (Composition API with `<script setup>`), Vite (build tool & dev server), Vue Router (for client-side routing). CSS can be scoped per component or global.
+    *   Structure: Component-based architecture.
+        *   `broodjes-app-vue/src/main.js`: Initializes the Vue app, mounts the root component, and sets up plugins (like Vue Router).
+        *   `broodjes-app-vue/src/App.vue`: Main application shell, typically includes `<router-link>` for navigation and `<router-view>` to display routed components.
+        *   `broodjes-app-vue/src/router/index.js`: Defines application routes and maps them to components (e.g., `GenerateView.vue`, `RecipeListView.vue`, `IngredientDbView.vue`).
+        *   `broodjes-app-vue/src/services/apiService.js`: Handles all communication with the backend Netlify functions and GCFs. Methods return Promises and handle JSON parsing and basic error structuring.
+        *   `broodjes-app-vue/src/components/`: Contains reusable UI elements (e.g., modals, buttons, specific parts of views).
+        *   `broodjes-app-vue/src/views/` (or directly in `components/`): Contains components representing distinct pages or views (e.g., `GenerateView.vue`). These components manage their own state, logic, and use `apiService.js` for data fetching and mutations.
+    *   Hosting: Netlify Static Site Hosting (serving files from `broodjes-app-vue/dist/` after build).
+    *   Functionality: Handles user input via Vue's reactivity (`v-model`), displays data dynamically, triggers backend operations.
+    *   **Caching:** Initial `sessionStorage` logic from Vanilla JS is being phased out. State management within Vue components (`ref`, `reactive`) is used. For more complex global state or cross-component caching, Pinia (or a similar Vue state management library) would be the recommended approach.
+    *   **Error Handling:** Errors from `apiService.js` (which standardizes backend error responses) are caught within Vue components. User feedback is provided through reactive data properties bound to the template (e.g., displaying an error message if an `error` ref is populated).
+    *   **UI Feedback:** Loading states (`isLoading` refs) are managed within components to disable buttons, show spinners, etc., leveraging Vue's conditional rendering (`v-if`, `v-show`) and attribute binding.
 
 *   **Backend - Netlify Functions (`netlify/functions/`):**
-    *   ~~`/api/generateRecipe` (`generateRecipe.js`):~~ (Removed - Logic moved to `gcf-generate-broodje` GCF)
+    *   `/api/generate` (`generate.js` - **NEW/REPLACES OLD `/api/generateRecipe`**): Receives recipe generation parameters (theme, ingredients, style) from the Vue frontend. Retrieves `GCF_GENERATE_BROODJE_URL` and calls the `generateBroodjeRecipe` GCF. Returns the GCF's response (`{ taskId, recipe }`) to the frontend.
     *   `/api/getRecipes` (`getRecipes.js`): Fetches saved recipe data (recipe JSON, cost breakdown text, etc.) from the Supabase `async_tasks` table.
         *   Selects completed tasks with non-null recipes.
         *   Maps DB fields to frontend keys (`id`, `generated_recipe`, `cost_breakdown`, etc.).
@@ -57,7 +55,10 @@ The application is built using a combination of a static frontend, serverless fu
     *   `/api/updateIngredient` (`updateIngredient.js`): Updates an existing ingredient in the `ingredients` table. Requires Service Role Key.
     *   `/api/deleteIngredient` (`deleteIngredient.js`): Deletes an ingredient from the `ingredients` table. Requires Service Role Key.
     *   `/api/clearRecipes` (`clearRecipes.js`): Deletes all records from the `async_tasks` table. Requires Service Role Key.
-    *   `/api/getConfig` (`getConfig.js`): Returns configuration values, specifically the `GCF_IMAGE_GENERATION_URL`, to the frontend.
+    *   `/api/triggerIngredientImageGeneration` (`triggerIngredientImageGeneration.js` - **NEW**): Receives `ingredient_id` and `ingredient_name`. Retrieves `GCF_IMAGE_GENERATION_URL` and calls the `generateIngredientImage` GCF to start image generation asynchronously. Returns a status indicating the GCF was triggered.
+    *   `/api/startVisualizationTask` (`startVisualizationTask.js` - **NEW**): Receives `taskId`. Retrieves `GCF_VISUALIZE_BROODJE_URL` and calls the `visualizeBroodje` GCF to start image generation asynchronously. Returns a status indicating the GCF was triggered.
+    *   `/api/getTaskStatus` (`getTaskStatus.js` - **NEW**): Receives `taskId`. Queries `async_tasks` table for `status` and `broodje_image_url` (or a dedicated visualization status). Returns `{ status: 'pending' | 'completed' | 'failed', imageUrl?: '...', error?: '...' }`.
+    *   ~~`/api/getConfig` (`getConfig.js`):~~ (Potentially deprecated or less critical. GCF URLs are now primarily used by other Netlify Functions, which can access them directly from env vars. If Vue frontend needs specific GCF URLs directly, this could be kept, but current flows suggest backend-to-backend GCF calls.)
 
 *   **Backend - Shared Libraries (`netlify/functions/lib/`):**
     *   `openaiClient.js`: Utility to initialize and provide the OpenAI API client.
@@ -80,255 +81,317 @@ The application is built using a combination of a static frontend, serverless fu
 
 *   **External Services:**
     *   **OpenAI API:** Used for recipe generation, refinement, cost estimation fallbacks, and **ingredient image generation** (DALL-E 3 / GPT-4o).
-    *   **Netlify:** Hosts the frontend and Netlify functions.
-    *   **Google Cloud Platform (GCP):** Hosts the `generateIngredientImage` Cloud Function.
+    *   **Netlify:** Hosts the Vue frontend (static build from `broodjes-app-vue/dist/`) and Netlify functions.
+    *   **Google Cloud Platform (GCP):** Hosts the GCFs (`generateIngredientImage`, `generateBroodjeRecipe`, `visualizeBroodje`).
 
 *   **Source Control & CI/CD:**
     *   **GitHub (`Rul1an/broodjes-ai-mvp`):** Hosts the codebase.
-    *   **Netlify:** Deploys frontend and Netlify functions automatically on pushes to the connected branch (e.g., `Broodjes-ai-v2`).
-    *   ~~**GitHub Actions (`.github/workflows/`):** Deploys GCFs (`calculateCost`) on pushes to the relevant branch.~~ (Removed - GCF deployment no longer needed, review workflow file if it exists)
+    *   **Netlify:** Deploys the Vue frontend and Netlify functions automatically on pushes to the connected branch (e.g., `Broodjes-ai-v2`).
+        *   Build settings in Netlify UI should align with `netlify.toml`: base directory `broodjes-app-vue`, build command `npm run build`, publish directory `dist` (relative to base).
+    *   GCF deployment is managed separately (e.g., via Google Cloud Console, gcloud CLI, or CI/CD pipelines specific to GCP if set up).
 
 ## 2. Primary Workflows
 
 ### A. Generate New Recipe
 
-1.  **Frontend:** User enters ingredients/idea, selects model (`gpt-4o` or `gpt-4o-mini`), clicks "Generate".
-2.  **Frontend (`js/views/generateView.js`):**
-    *   Retrieves the `gcfGenerateBroodjeUrl` (via `apiService.getConfig`).
-    *   Calls the `generateBroodjeRecipe` GCF URL directly via `fetch` (POST), passing `ingredients`, `type`='broodje', and `model`.
-3.  **GCF (`generateBroodjeRecipe`):**
+1.  **Frontend (Vue - `broodjes-app-vue/src/components/GenerateView.vue`):**
+    *   User enters data into form fields (thema, extraIngredienten, stijl) which are bound to reactive refs (`thema`, `extraIngredienten`, `stijl`) using `v-model`.
+    *   User clicks the "Genereer Broodje" button, which triggers the `handleGenerate` method (`@submit.prevent="handleGenerate"` on the form).
+2.  **Frontend (`GenerateView.vue` - `handleGenerate` method):**
+    *   Sets `isLoading` ref to `true` (disables button, shows loading indicator).
+    *   Resets previous state (errors, recipe data, image URL, etc.) by calling `resetState()`.
+    *   Calls `apiService.generateRecipe({ theme: thema.value, ... })`.
+3.  **Frontend (`broodjes-app-vue/src/services/apiService.js` - `generateRecipe` function):**
+    *   Makes a `POST` request to the `/api/generate` Netlify Function endpoint, sending the payload.
+    *   Awaits the response. Handles potential network errors or non-JSON responses.
+    *   If successful, returns the parsed JSON response (e.g., `{ recipe: { ... }, taskId: "..." }`).
+    *   If error, throws a structured error object.
+4.  **Netlify Function (`netlify/functions/generate.js` - voorheen `generateRecipe.js`):**
+    *   Receives the request payload (theme, extra_ingredients, style).
+    *   **Crucially, this function now needs to determine which GCF to call (the one that expects `theme`, `extra_ingredients`, `style`). This is likely `gcf-generate-broodje`.**
+    *   Retrieves the `GCF_GENERATE_BROODJE_URL` from environment variables.
+    *   Makes an HTTP POST request to the `generateBroodjeRecipe` GCF, forwarding the relevant payload.
+    *   Receives the response from the GCF (which includes `taskId` and `recipe` object).
+    *   Returns this GCF response (e.g., `{ recipe: <json_object>, taskId: <new_task_id> }`) to the Vue frontend.
+5.  **GCF (`generateBroodjeRecipe` - `google-cloud-functions/gcf-generate-broodje/index.js`):**
+    *   (Logic remains largely the same as previously documented)
     *   Checks cache in `openai_cache` table based on input payload.
     *   If cache miss: Calls OpenAI API with the user's prompt and selected model.
     *   Saves successful OpenAI response to cache.
     *   Parses recipe JSON from (cached or new) response.
     *   Saves recipe JSON, idea, model, status='completed' to `async_tasks`.
-    *   Returns `{ recipe: <json_object>, taskId: <new_task_id> }` to the frontend.
-4.  **Frontend (`js/views/generateView.js` via `apiService.js`):**
-    *   Receives the response.
-    *   Calls `recipeListView.displayRecipe` to show the formatted recipe.
-    *   Calls `fetchCostBreakdown` (within `generateView.js`) which calls `apiService.getCostBreakdown`.
-5.  **Netlify Function (`/api/getCostBreakdown`):**
-    *   Fetches recipe JSON and ingredient data (including `image_url`).
-    *   Performs cost calculation (DB/AI/Hybrid).
-    *   Formats breakdown text, **including `<img>` tags for ingredients with an `image_url`**.
-    *   Saves and returns the breakdown.
-6.  **Frontend (`js/views/generateView.js` via `apiService.js`):**
-    *   Receives breakdown response.
-    *   Calls `recipeListView.displayCostBreakdown` which renders the HTML (including images) using `marked.parse`.
+    *   Returns `{ recipe: <json_object>, taskId: <new_task_id> }` to the calling Netlify Function.
+6.  **Frontend (`GenerateView.vue` - `handleGenerate` method cont.):**
+    *   Receives the response from `apiService.generateRecipe`.
+    *   Sets `generatedRecipe.value` and `currentTaskId.value`.
+    *   Sets `currentRecipeTitle.value`.
+    *   `formattedRecipe` computed property automatically updates to show the new recipe (using `marked.parse`).
+    *   Sets `isLoading.value` to `false`.
+    *   The "Visualiseer Broodje" button becomes available.
+    *   (The old flow of immediately calling `fetchCostBreakdown` is removed here as cost breakdown is usually a separate step or handled differently).
 
 ### B. View Saved Recipes
 
-1.  **Frontend (`js/views/navigation.js`):** User clicks "Saved Recipes" nav button, `setActiveView('view-recipes')` is called.
-2.  **Frontend (`js/views/navigation.js`):** Calls `recipeListView.loadRecipes`.
-3.  **Frontend (`js/views/recipeListView.js`):** Calls `apiService.getRecipes`.
-4.  **Netlify Function (`/api/getRecipes`):**
-    *   Queries the `async_tasks` table for relevant records (potentially filtering/paginating) using `lib/supabaseClient.js`.
-    *   Selects `task_id`, `recipe` (JSON), `cost_breakdown` (text), `created_at`, etc.
+1.  **Frontend (Vue Router & `App.vue`):** User clicks a navigation link (e.g., in `App.vue`) like `<router-link to="/recepten">Opgeslagen Recepten</router-link>`.
+2.  **Frontend (Vue Router):** Vue Router navigates to the route configured for `/recepten`, which renders the `RecipeListView.vue` component (of hoe de view ook heet).
+3.  **Frontend (`RecipeListView.vue` - e.g., in `onMounted` hook or a method called on view activation):**
+    *   Sets a loading state (`isLoading.value = true`).
+    *   Calls `apiService.getRecipes()`.
+4.  **Frontend (`broodjes-app-vue/src/services/apiService.js` - `getRecipes` function):**
+    *   Makes a `GET` request to the `/api/getRecipes` Netlify Function endpoint.
+    *   Handles the response, returning parsed JSON (e.g., `{ recipes: [...] }`) or throwing a structured error.
+5.  **Netlify Function (`netlify/functions/getRecipes.js`):**
+    *   (Logic remains largely the same as previously documented)
+    *   Queries the `async_tasks` table for relevant records.
     *   Returns the list of recipe data.
-5.  **Frontend (`js/views/recipeListView.js`):**
-    *   Receives recipe list via `apiService.js`.
-    *   Formats and renders the list items in the UI, attaching event listeners.
+6.  **Frontend (`RecipeListView.vue`):**
+    *   Receives the list of recipes (or error) from `apiService`.
+    *   Stores the recipes in a reactive ref (e.g., `recipes.value = response.recipes`).
+    *   Sets `isLoading.value = false`.
+    *   The component's template uses `v-for` to iterate over the `recipes` ref and display each recipe, potentially in a child component (e.g., `RecipeCard.vue`). Event listeners for actions like 'Refine' or 'Visualize' would be attached here.
 
 ### C. Refine Recipe
 
-1.  **Frontend (`js/views/recipeListView.js`):** User clicks "Refine" on a displayed recipe, enters refinement instructions.
-2.  **Frontend (`js/views/recipeListView.js` - Event Listener):** Calls `handleRefineRecipe` which calls `apiService.refineRecipe`.
-3.  **Netlify Function (`/api/refineRecipe`):**
-    *   Fetches `recipe` (JSON) and `cost_breakdown` (text) from `async_tasks` using `recipeId` (via `lib/supabaseClient.js`).
-    *   Constructs a detailed prompt for OpenAI including original recipe, existing breakdown, and user request (using `promptTemplates.js`).
-    *   Calls OpenAI (`gpt-3.5-turbo` or `gpt-4o`) via `lib/openaiClient.js`.
-    *   Receives the *combined* refined recipe + breakdown text from OpenAI.
-    *   Updates `async_tasks`, overwriting the `cost_breakdown` column with the new combined text (via `lib/supabaseClient.js`).
-    *   Returns `{ recipe: <refined_text> }` to the frontend.
-4.  **Frontend (`js/views/recipeListView.js`):**
-    *   Receives response via `apiService.js`.
-    *   Displays the updated recipe/cost breakdown text in the specific recipe's refine section.
+1.  **Frontend (`RecipeListView.vue` or `RecipeCard.vue`):**
+    *   User interacts with a specific recipe (e.g., clicks a "Refine" button associated with a recipe).
+    *   A method is called, possibly opening a modal or an input area for refinement instructions. The `taskId` of the recipe is known.
+2.  **Frontend (Method in Vue component):**
+    *   User enters refinement instructions (e.g., into a `v-model` bound ref).
+    *   On submission (e.g., another button click), the method calls `apiService.refineRecipe(taskId, refinementInstructions)`.
+3.  **Frontend (`broodjes-app-vue/src/services/apiService.js` - `refineRecipe` function):**
+    *   Makes a `POST` request to `/api/refineRecipe`, sending `{ taskId, instructions }`.
+    *   Handles response and errors.
+4.  **Netlify Function (`netlify/functions/refineRecipe.js`):**
+    *   (Logic remains largely the same as previously documented)
+    *   Fetches original recipe, calls OpenAI with refinement prompt, updates `async_tasks`.
+    *   Returns the refined data (e.g., `{ recipe: <refined_text_or_object> }`).
+5.  **Frontend (Vue component - callback/await from `apiService`):**
+    *   Receives the refined recipe data.
+    *   Updates the local state for that specific recipe to reflect the changes (e.g., by updating an item in the `recipes.value` array or a specific reactive object if viewing a detail page).
+    *   The UI reactively updates to show the refined recipe.
 
 ### D. Manage Ingredients (New)
 
-1.  **Frontend:** User navigates to ingredient management.
-2.  **Frontend (`ingredientView.js`):** Loads and displays ingredients.
-3.  **User Action (Add/Update):**
-    *   User fills form, clicks Add/Update.
-    *   Frontend (`ingredientView.js`) calls `/api/addIngredient` or `/api/updateIngredient`.
-4.  **Netlify Function (`/api/addIngredient` or `/api/updateIngredient`):**
-    *   Performs validation.
-    *   Inserts/Updates ingredient in Supabase `ingredients` table.
-    *   Returns success (with the new/updated ingredient data) or failure to frontend.
-5.  **Frontend (`ingredientView.js`):**
-    *   Receives successful response from `add/update`.
-    *   Extracts `ingredient_id` and `ingredient_name`.
-    *   Fetches GCF URL using `/api/getConfig` (if not already fetched).
-    *   Asynchronously calls the `generateIngredientImage` GCF URL via `fetch` (POST), passing the ID and name.
-6.  **GCF (`generateIngredientImage`):**
-    *   Receives request with ID and name.
-    *   Calls OpenAI Image API.
-    *   Updates the `image_url` in the Supabase `ingredients` table for the given ID.
-7.  **User Action (Delete):** (Renumbered)
-    *   User clicks Delete.
-    *   Frontend (`ingredientView.js`) calls `/api/deleteIngredient`.
-8.  **Netlify Function (`/api/deleteIngredient`):** (Renumbered) Deletes ingredient from Supabase.
-9.  **Frontend:** (Renumbered) Updates UI based on success/failure.
+1.  **Frontend (Vue Router & `App.vue`):** User navigates to the ingredient management view (e.g., via `<router-link to="/ingredienten">`).
+2.  **Frontend (Vue Router):** Renders the `IngredientDbView.vue` component (of hoe de view ook heet).
+3.  **Frontend (`IngredientDbView.vue` - e.g., in `onMounted`):**
+    *   Calls `apiService.getIngredients()` to load and display existing ingredients.
+    *   Ingredients are stored in a reactive ref (e.g., `ingredients.value`) and displayed using `v-for`.
+4.  **User Action (Add/Update Ingredient):**
+    *   User fills a form (for new ingredient or editing an existing one). Data is bound with `v-model`.
+    *   On submit, a method in `IngredientDbView.vue` calls `apiService.addIngredient(newIngredientData)` or `apiService.updateIngredient(ingredientId, updatedData)`.
+5.  **Frontend (`broodjes-app-vue/src/services/apiService.js` - `addIngredient` / `updateIngredient` functions):**
+    *   Make `POST` (for add) or `PUT` (for update) requests to `/api/addIngredient` or `/api/updateIngredient` Netlify Functions.
+    *   Return the response (new/updated ingredient data) or throw an error.
+6.  **Netlify Function (`netlify/functions/addIngredient.js` or `updateIngredient.js`):**
+    *   (Logic remains largely the same: validation, DB insert/update).
+    *   Returns the new or updated ingredient, including its `id` and `name`.
+7.  **Frontend (`IngredientDbView.vue` - callback/await from `apiService`):**
+    *   On successful add/update:
+        *   Updates the local `ingredients.value` list reactively.
+        *   Extracts `ingredient_id` and `ingredient_name` from the response.
+        *   **Asynchronously calls `apiService.startIngredientImageGeneration(ingredient_id, ingredient_name)` (new function in `apiService`).**
+8.  **Frontend (`broodjes-app-vue/src/services/apiService.js` - `startIngredientImageGeneration` function):**
+    *   This function will now call a new Netlify Function, e.g., `/api/triggerIngredientImageGeneration`, sending `{ ingredient_id, ingredient_name }`.
+    *   The purpose of this Netlify Function is to securely call the GCF, as GCF URLs and direct calls from the browser can be complex with auth/CORS if not proxied.
+9.  **Netlify Function (`netlify/functions/triggerIngredientImageGeneration.js` - NEW):**
+    *   Receives `{ ingredient_id, ingredient_name }`.
+    *   Retrieves `GCF_IMAGE_GENERATION_URL` from environment variables.
+    *   Makes an HTTP POST request to the `generateIngredientImage` GCF.
+    *   It might not wait for the GCF to finish; it just triggers it. It can return a simple success/failure of the triggering action.
+10. **GCF (`generateIngredientImage` - `google-cloud-functions/generate-ingredient-image/index.js`):**
+    *   (Logic remains largely the same: receives ID/name, calls OpenAI Image API, updates `image_url` in Supabase `ingredients` table).
+    *   **Note:** The frontend won't directly know when this is done unless it polls or Supabase Realtime is used to update the image in the UI when the `image_url` changes in the DB.
+11. **User Action (Delete Ingredient):**
+    *   User clicks a "Delete" button associated with an ingredient.
+    *   A method in `IngredientDbView.vue` calls `apiService.deleteIngredient(ingredientId)`.
+12. **Frontend (`broodjes-app-vue/src/services/apiService.js` - `deleteIngredient` function):**
+    *   Makes a `DELETE` request to `/api/deleteIngredient` Netlify Function.
+13. **Netlify Function (`netlify/functions/deleteIngredient.js`):**
+    *   (Logic remains largely the same: deletes ingredient from Supabase).
+14. **Frontend (`IngredientDbView.vue`):**
+    *   On success, removes the ingredient from the local `ingredients.value` list, updating the UI reactively.
 
 ### E. Clear All Saved Recipes (New)
 
-1.  **Frontend (`js/views/recipeListView.js`):** User clicks "Alle Recepten Verwijderen" button.
-2.  **Frontend (`js/views/recipeListView.js` - Event Listener):** Calls `handleClearAllRecipes` which calls `apiService.clearAllRecipes`.
-3.  **Netlify Function (`/api/clearRecipes`):**
-    *   Deletes all records from the `async_tasks` table using `lib/supabaseClient.js`.
-    *   Returns success/failure status.
-4.  **Frontend (`js/views/recipeListView.js`):** Calls `loadRecipes` again to refresh the (now empty) list.
+1.  **Frontend (`RecipeListView.vue` or a settings/admin view):**
+    *   User clicks a "Alle Recepten Verwijderen" button.
+    *   A confirmation modal/dialog should appear (using a Vue component, not `window.confirm()`).
+2.  **Frontend (Vue component - on confirmation):**
+    *   Calls `apiService.clearAllRecipes()`.
+    *   Shows a loading state.
+3.  **Frontend (`broodjes-app-vue/src/services/apiService.js` - `clearAllRecipes` function):**
+    *   Makes a `POST` (or `DELETE`) request to `/api/clearRecipes` Netlify Function.
+4.  **Netlify Function (`netlify/functions/clearRecipes.js`):**
+    *   (Logic remains largely the same: deletes all records from `async_tasks`).
+    *   Returns success/failure.
+5.  **Frontend (Vue component - callback/await from `apiService`):**
+    *   On success, clears the local `recipes.value` list (or triggers a re-fetch which will return an empty list).
+    *   Hides loading state, potentially shows a success message.
 
 ### F. Visualize Broodje (New)
 
-1.  **Frontend (`js/views/recipeListView.js`):** User clicks "Visualiseer Broodje" button on a recipe card.
-2.  **Frontend (`js/views/recipeListView.js`):**
-    *   Starts loading indicator on the button.
-    *   Calls `apiService.visualizeBroodje(taskId)`.
-3.  **Frontend (`js/apiService.js`):**
-    *   Retrieves `appConfig` (calls `/api/getConfig` if needed) to get `gcfVisualizeBroodjeUrl`.
-    *   Makes a POST `fetch` request to the `gcfVisualizeBroodjeUrl`, sending `{ taskId }`.
-4.  **GCF (`visualizeBroodje`):**
-    *   Receives `taskId`.
-    *   Fetches task data (including `recipe`, `prompt`, `broodje_image_url`) from `async_tasks`.
-    *   If `broodje_image_url` exists, returns `{ imageUrl: existing_url }` immediately.
-    *   If not, generates a prompt for DALL-E 3 based on recipe/prompt.
-    *   Calls OpenAI Image API.
-    *   Updates `async_tasks` table with the new `broodje_image_url`.
-    *   Returns `{ imageUrl: new_url }`.
-5.  **Frontend (`js/apiService.js`):** Returns the response (or throws error) to `recipeListView.js`.
-6.  **Frontend (`js/views/recipeListView.js`):**
-    *   Receives `{ imageUrl }`.
-    *   Stops loading indicator.
-    *   Displays the image (e.g., in a modal or dedicated area on the card).
-    *   Handles errors (e.g., displays error message).
+1.  **Frontend (`GenerateView.vue` or `RecipeCard.vue`):**
+    *   User clicks "Visualiseer Broodje" button. This button is typically available after a recipe is generated (`currentTaskId.value` is set) or on a saved recipe card.
+    *   The `handleVisualize` method is called.
+2.  **Frontend (`GenerateView.vue` - `handleVisualize` method):**
+    *   Sets `isVisualizing.value = true` (shows initial loading/triggering state).
+    *   Resets previous visualization state (`pollingError`, `imageUrl`, stops any existing poll).
+    *   Calls `apiService.visualizeRecipe(currentTaskId.value)` (this name might change, e.g., `startBroodjeVisualization`).
+3.  **Frontend (`broodjes-app-vue/src/services/apiService.js` - `visualizeRecipe` / `startBroodjeVisualization` function):**
+    *   Makes a `POST` request to a Netlify Function endpoint, e.g., `/api/visualizeBroodje` (or `/api/startVisualizationTask`), sending `{ taskId }`.
+    *   This Netlify Function will be responsible for triggering the GCF.
+    *   Returns a response indicating the triggering was successful (it doesn't return the image URL yet).
+4.  **Netlify Function (`netlify/functions/visualizeBroodje.js` or `startVisualizationTask.js` - NEW or MODIFIED):**
+    *   Receives `{ taskId }`.
+    *   Retrieves `GCF_VISUALIZE_BROODJE_URL` from environment variables.
+    *   Makes an HTTP POST request to the `visualizeBroodje` GCF, forwarding `{ taskId }`.
+    *   The GCF will do its work asynchronously.
+    *   This Netlify function returns a success status to the frontend, confirming the GCF has been *triggered*.
+5.  **GCF (`visualizeBroodje` - `google-cloud-functions/gcf-visualize-broodje/index.js`):**
+    *   (Logic remains largely the same: receives taskId, fetches recipe, calls DALL-E, updates `async_tasks.broodje_image_url`).
+    *   **Important:** This GCF does *not* directly return the image URL to the original caller (the Netlify Function in step 4). It just does its work and updates the database.
+6.  **Frontend (`GenerateView.vue` - `handleVisualize` method cont.):**
+    *   Sets `isVisualizing.value = false` (triggering is done).
+    *   If triggering was successful, calls `startPolling()` method within the component.
+7.  **Frontend (`GenerateView.vue` - `startPolling` and `pollStatus` methods):**
+    *   `startPolling()`: Sets `isPolling.value = true`. Calls `pollStatus()` immediately and then sets an interval (`setInterval`) to call `pollStatus` periodically (e.g., every 3-5 seconds).
+    *   `pollStatus()`:
+        *   Calls `apiService.getTaskStatus(currentTaskId.value)`.
+8.  **Frontend (`broodjes-app-vue/src/services/apiService.js` - `getTaskStatus` function - NEW):**
+    *   Makes a `GET` request to a new Netlify Function endpoint, e.g., `/api/getTaskStatus?taskId=<taskId>`.
+9.  **Netlify Function (`netlify/functions/getTaskStatus.js` - NEW):**
+    *   Receives `taskId` from query parameter.
+    *   Queries the `async_tasks` table in Supabase for the given `taskId`.
+    *   Checks the `status` and `broodje_image_url` (or a dedicated visualization status field if you add one).
+    *   Returns a JSON response like `{ status: 'pending' }`, `{ status: 'completed', imageUrl: '...' }`, or `{ status: 'failed', error: '...' }`.
+10. **Frontend (`GenerateView.vue` - `pollStatus` method cont.):**
+    *   Receives the status from `apiService.getTaskStatus`.
+    *   If `status === 'completed'`:
+        *   Sets `imageUrl.value = response.imageUrl`.
+        *   Calls `stopPolling()` (which clears the interval and sets `isPolling.value = false`).
+    *   If `status === 'failed'`:
+        *   Sets `pollingError.value` with the error details.
+        *   Calls `stopPolling()`.
+    *   If `status === 'pending'`: Does nothing, the interval will call `pollStatus` again.
+11. **Frontend (`GenerateView.vue` - template):**
+    *   Reactively displays the image if `imageUrl.value` is set.
+    *   Shows loading/polling indicators based on `isPolling.value`.
+    *   Shows errors based on `pollingError.value`.
 
-## 3. Environment Variables
+## 3. Environment Variables & Configuration
 
 Ensure the following are configured correctly:
 
-*   **Netlify (Site settings > Build & deploy > Environment):**
-    *   `OPENAI_API_KEY`
-    *   `SUPABASE_URL`
-    *   `SUPABASE_SERVICE_KEY`
-    *   `GCF_IMAGE_GENERATION_URL` (URL for the `generateIngredientImage` GCF)
-    *   `GCF_GENERATE_BROODJE_URL` (URL for the `generateBroodjeRecipe` GCF)
-    *   `SUPABASE_ANON_KEY`
-    *   `GCF_VISUALIZE_BROODJE_URL` (URL for the `visualizeBroodje` GCF)
+*   **Vue Frontend (broodjes-app-vue/):**
+    *   Uses `.env.[mode]` files (e.g., `.env.development`, `.env.production`) for environment-specific variables.
+    *   Variables must be prefixed with `VITE_` to be exposed to the client-side code (e.g., `VITE_API_BASE_URL="/api"`).
+    *   During `netlify dev`, these can be supplemented or overridden by variables in `netlify.toml` or the Netlify UI.
+
+*   **Netlify (Site settings > Build & deploy > Environment & netlify.toml):**
+    *   `OPENAI_API_KEY`: Used by Netlify Functions and GCFs.
+    *   `SUPABASE_URL`: Used by Netlify Functions and GCFs.
+    *   `SUPABASE_SERVICE_KEY`: Used by Netlify Functions and GCFs for privileged operations.
+    *   `SUPABASE_ANON_KEY`: Potentially used by the Vue frontend if direct Supabase calls were ever made (currently all via backend).
+    *   `GCF_IMAGE_GENERATION_URL`: URL for the `generateIngredientImage` GCF. Made available to Netlify Functions.
+    *   `GCF_GENERATE_BROODJE_URL`: URL for the `generateBroodjeRecipe` GCF. Made available to Netlify Functions.
+    *   `GCF_VISUALIZE_BROODJE_URL`: URL for the `visualizeBroodje` GCF. Made available to Netlify Functions.
+    *   Environment variables defined here are available to Netlify Functions at runtime and to the build process of the Vue app (if not prefixed with `VITE_`, they are build-time only for the frontend unless explicitly passed).
+
 *   **GCP (Environment Variables for GCFs):**
     *   Requires `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY` for all GCFs.
-    *   Optionally `ALLOWED_ORIGIN` for CORS configuration.
+    *   Optionally `ALLOWED_ORIGIN` for CORS configuration if GCFs are called directly from the browser (currently GCFs are mostly called by Netlify Functions, reducing direct browser CORS needs for GCFs).
 
-## 4. Potential Improvements / Areas for Review
+*   **`netlify.toml` (in project root `/Users/roelschuurkes/BROODJESAPP/`):**
+    *   `[build]`: Defines `command = "npm run build"`, `base = "broodjes-app-vue"`, `publish = "broodjes-app-vue/dist"`, and `functions = "netlify/functions"`.
+    *   `[dev]`: Defines `command = "npm run dev"` (for Vite), `targetPort` (for Vite dev server, e.g., 5173), `framework = "#vite"`, `functions = "netlify/functions"`, and `publish = "broodjes-app-vue/dist"`.
+    *   This file is crucial for `netlify dev` to correctly serve the Vue app and Netlify functions together, and for Netlify to build and deploy the site correctly.
 
-This section tracks areas identified for potential improvement or further investigation.
+## 4. Potential Improvements / Areas for Review (Post Vue.js Migration)
 
-**Completed:**
+This section tracks areas identified for potential improvement or further investigation based on the **current Vue 3 architecture**.
 
-*   **Consolidate Platform:** Migrated frontend and backend functions to Netlify.
-*   **Eliminate Redundancy:** Removed separate Express server.
-*   **Share Helper Code:** Centralized Supabase and OpenAI client initialization in `netlify/functions/lib`.
-*   **Document New APIs:** Added documentation for `generateRecipe`, `refineRecipe`, `clearRecipes`, `getCostBreakdown`.
+**Recently Completed (Primarily during/due to Vue Migration):**
 
-**Active / To-Do:**
+*   **Frontend Migration to Vue 3:** Core application frontend rebuilt with Vue 3, Vite, and Vue Router.
+*   **Refactored API Service:** `apiService.js` created within the Vue app (`broodjes-app-vue/src/services/`) for handling calls to Netlify Functions.
+*   **Client-Side Routing:** Implemented with `vue-router`.
+*   **Component-Based UI:** Initial versions of `GenerateView.vue`, `RecipeListView.vue`, `IngredientDbView.vue` created.
+*   **Asynchronous Task Handling for Visualization:** Implemented polling mechanism in `GenerateView.vue` to check image generation status via new Netlify Functions (`/api/startVisualizationTask`, `/api/getTaskStatus`).
+*   **Netlify Dev Setup:** Configured `netlify.toml` for local development (proxying Vite and Netlify Functions) and for production build settings.
+*   **Revised Workflows:** Documented how user flows interact with Vue components and the updated backend invocation patterns (Netlify Function calls GCF).
+*   **Environment Variable Handling:** Clarified usage of `.env` files for Vite and Netlify environment variables.
 
-*   **Standardize Client/Key Usage:**
-    *   **(Done)** Verified all backend functions consistently use shared clients (`lib/supabaseClient.js`, `lib/openaiClient.js`).
-    *   **(Done)** Reviewed key usage; Service Role Key is used by shared Supabase client.
+**Active / To-Do (Post-Vue Migration):**
 
-*   **Optimize AI Calls & Costs:**
-    *   Review prompt engineering for efficiency and quality across `generateRecipe`, `refineRecipe`, and `getCostBreakdown`.
-    *   Consider caching identical requests (e.g., generating a recipe for the exact same ingredients multiple times) to reduce redundant OpenAI calls.
-    *   Evaluate if cheaper/faster OpenAI models are sufficient for certain tasks.
+*   **Complete UI/UX for all Views:**
+    *   Flesh out `RecipeListView.vue` and `IngredientDbView.vue` with full functionality (display, add, edit, delete where applicable).
+    *   Implement custom modals (e.g., using Vue Teleport or a library) to replace `window.confirm()` and for image display.
+    *   Ensure consistent error display and loading states across all views.
 
-*   **Enhance Error Handling & Logging:**
-    *   **(Done) Standardize Backend Error Responses:** All Netlify functions now return a consistent JSON structure (`{ error: { message, code, details } }`) upon failure, including appropriate HTTP status codes.
-    *   **(Done) Implement Frontend Error Display:** Modified `apiService.js` to parse the standardized error response. View modules now use the error payload (`errorPayload.message`) to display user-friendly feedback via `uiUtils.displayErrorToast`.
-    *   **(Next) Improve Backend Logging:** Ensure all `catch` blocks log the *full* error object (including stack trace) server-side for better debugging.
+*   **State Management (Vue):**
+    *   For simple cases, `ref` and `reactive` are sufficient.
+    *   **(Next) Evaluate Need for Pinia:** If global state (e.g., user authentication, shared configuration, complex cross-component data) becomes necessary, integrate Pinia.
+    *   Revisit `apiService.js` caching: Currently no client-side caching. If GCF/Netlify Function responses are cacheable and frequently requested, consider a simple in-memory cache in `apiService.js` or integrate with Pinia state.
 
-*   **Improve Code Structure & Readability:**
-    *   **(Next - Optional/Larger) Refactor Backend Utilities (`costUtils.js`):** Split the large `costUtils.js` into smaller, more focused modules (e.g., `unitConversion.js`, `quantityParsing.js`, `aiCostHelpers.js`) and update `require` statements in `getCostBreakdown.js`.
-    *   **(Next - Optional/Larger) Refactor Backend Main Logic (`getCostBreakdown.js`):** Improve readability by extracting the logic for DB-only, AI-fallback, and Hybrid scenarios into separate internal helper functions within `getCostBreakdown.js`.
-    *   Review Vanilla JS structure: Evaluate if the current view/service separation is sufficient or if a slightly more structured approach (e.g., simple state management pattern) could simplify UI updates and data flow, especially with added complexity.
+*   **Backend Function Adjustments (Post-Vue Migration):**
+    *   **Verify GCF Invocation:** Ensure all Netlify functions correctly call GCFs and handle environment variables for GCF URLs.
+    *   **Review `getConfig.js`:** Decide if `/api/getConfig` is still needed. If all GCF URLs are handled backend-to-backend by Netlify Functions, this might be removable. If the Vue app ever needs a GCF URL directly (less ideal), it could stay.
 
-*   **Address Function Timeouts (Netlify Free Tier):**
-    *   The 10-second timeout remains a constraint for potentially long-running operations (complex recipe generation, future image generation).
-    *   **Mitigation for Existing Features:** Optimize existing AI calls as much as possible.
-    *   **Strategy for New Features (Image Generation):** Image generation *cannot* reliably run within the 10s limit on Netlify free tier. The proposed solution is to use **Google Cloud Functions (GCF)** triggered asynchronously.
-        *   The frontend would call a quick Netlify function to initiate the GCF task.
-        *   The GCF would perform the image generation and store the result (e.g., in Supabase).
-        *   The frontend would poll or use a mechanism (like Supabase Realtime) to know when the image is ready.
+*   **Optimize AI Calls & Costs:** (Remains relevant)
+    *   Review prompt engineering.
+    *   Server-side caching in `openai_cache` table via `cacheUtils.js` is implemented and should be maintained/monitored.
+    *   Evaluate model choices.
 
-*   **UI/UX Enhancements:**
-    *   **(Done)** Improve Loading/Feedback.
-    *   **(Partially Done) Ingredient Image Display:** Backend setup complete (GCF, trigger, DB update, cost breakdown includes `<img>`). Frontend rendering works via `marked.parse`. *Needs more robust testing, placeholder/error state handling in UI.*
-    *   **(Next)** Dedicated "Visualiseer Broodje" button and associated GCF/workflow.
-    *   **(Next)** Replace `confirm()` with custom modal.
+*   **Enhance Error Handling & Logging:** (Backend part remains relevant)
+    *   **(Next) Improve Backend Logging:** Ensure all `catch` blocks in Netlify Functions and GCFs log the *full* error object (including stack trace) server-side for better debugging.
 
-*   **Input Validation:**
-    *   **(Done)** Reviewed backend functions (`add`, `update`, `delete` ingredient); validation for required fields and types is present.
-    *   **(Next)** Add stricter input validation on the *frontend* (e.g., check for numbers in price field before sending) and consider backend validation for `generateRecipe`/`refineRecipe` inputs.
+*   **Address Function Timeouts (Netlify Free Tier):** (Strategy of using GCFs for long tasks is sound)
+    *   The GCF-based approach for recipe generation, ingredient image generation, and broodje visualization is the correct strategy for handling Netlify's 10s timeout.
 
-*   **Investigate Unused/Redundant Code:**
-    *   **(Done)** Reviewed and removed `generate.js` and `get-processed-recipe.js`.
+*   **Input Validation:** (Frontend part needs more focus)
+    *   **(Next)** Add comprehensive frontend input validation in all forms (Vue components) before calling `apiService.js`.
 
-*   **Stap 9: Implementeer OpenAI Request Caching (Server-side) (Done)**
-    *   **Doel:** Verminder onnodige OpenAI calls en kosten.
-    *   **Actie:** Database caching geïmplementeerd via `cacheUtils.js` en `openai_cache` tabel. Functies `generateRecipe`, `refineRecipe`, en AI helpers in `aiCostUtils` checken nu de cache en slaan nieuwe resultaten op.
-*   **Stap 10: Implementeer Asynchrone Beeldgeneratie Ingredienten (Done)**
-    *   **Doel:** Voeg afbeeldingen toe aan ingrediënten zonder de UI te blokkeren.
-    *   **Actie:** Setup `generateIngredientImage` GCF met CORS. Frontend (`ingredientView.js`) triggert GCF *direct* via `fetch` na succesvolle toevoeging/update via `/api/addIngredient` of `/api/updateIngredient`. GCF updatet `image_url` in Supabase `ingredients` tabel. `/api/getConfig` levert GCF URL aan frontend.
-*   **Stap 11: Verplaats Recept Generatie naar GCF (Done)**
-    *   **Doel:** Los Netlify timeout op voor recept generatie.
-    *   **Actie:** Nieuwe GCF `generateBroodjeRecipe` gemaakt met OpenAI call, caching, en DB insert. Frontend roept deze GCF nu direct aan via URL verkregen van `/api/getConfig`. Oude `/api/generateRecipe` Netlify functie verwijderd.
-*   **Stap 12 (Voorheen deel van Stap 10): Test/Verbeter Image Display & Voeg Features Toe (Next)**
-    *   **Doel:** Afronden image functionaliteit en UI verbeteren.
-    *   **Actie:** Testen image display in `getCostBreakdown`, evt. placeholders toevoegen voor missende/ladende images. Implementeer "Visualiseer Broodje" knop/workflow (nieuwe GCF `visualizeBroodje`, nieuwe DB kolom `broodje_image_url`, aanpassing `/api/getConfig`, frontend logica). Vervang `confirm()` door custom modal. Overweeg strengere frontend input validatie.
+*   **Testing:**
+    *   **(Next)** Implement unit tests for Vue components and `apiService.js` using Vitest or Jest.
+    *   **(Next)** Consider end-to-end tests for key user flows using Cypress or Playwright.
 
-## 5. Improvement Plan (Phased Approach - TEMP)
+## 5. Improvement Plan (Post Vue.js Migration)
 
-This section outlines the planned steps for implementing improvements.
+This section outlines planned steps, focusing on completing and refining the Vue application.
 
-**Fase 1: Fundamenten en Directe Gebruikerservaring (Completed)**
+**Fase 1: Complete Core Vue Functionality & UI**
 
-*   **Stap 1: Standaardiseer Backend Error Responses (Done)**
-    *   Alle Netlify functions retourneren nu `{ error: { message, code, details } }`.
-*   **Stap 2: Implementeer Frontend Error Weergave (Done)**
-    *   `apiService.js` parseert de gestandaardiseerde error.
-    *   View modules gebruiken `uiUtils.displayErrorToast(errorPayload.message)`.
-*   **Stap 3: Verbeter UI Feedback (Loading & Knoppen) (Done)**
-    *   Loading indicators vervangen door spinners.
-    *   Actieknoppen gebruiken `setButtonLoading` voor disabled states.
+*   **Stap 1: Finalize `RecipeListView.vue`**
+    *   Display saved recipes with details.
+    *   Implement 'Refine' and 'Visualize Broodje' (polling) functionality on recipe cards.
+    *   Implement 'Clear All Recipes' with confirmation modal.
+*   **Stap 2: Finalize `IngredientDbView.vue`**
+    *   Display ingredients, including their generated images (if available, consider placeholder).
+    *   Implement Add, Update, Delete functionality with forms/modals.
+    *   Ensure asynchronous image generation is triggered and UI updates (e.g., shows a spinner or placeholder until image appears, or refreshes periodically).
+*   **Stap 3: Implement Custom Modals**
+    *   Replace all `window.confirm()` calls.
+    *   Use a consistent modal component for image display, confirmations, and potentially forms.
+*   **Stap 4: Comprehensive Frontend Input Validation**
+    *   Add validation to all user input fields.
+*   **Stap 5: Thorough UI/UX Testing and Refinement**
+    *   Test all user flows.
+    *   Ensure consistent loading states and error messages.
 
-**Fase 2: Optimalisaties en Refactoring**
+**Fase 2: Backend Refinements & Advanced Features**
 
-*   **Stap 4: Implementeer Client-Side Caching voor Ingrediënten (Done)**
-    *   **Doel:** Voorkom onnodig ophalen van de ingrediëntenlijst.
-    *   **Actie:** Gebruik `sessionStorage` in `apiService.js` voor ingrediënten en recepten.
-*   **Stap 5: Verbeter Backend Logging (Done)**
-    *   **Doel:** Betere debugging mogelijkheden.
-    *   **Actie:** Zorg dat alle `catch` blokken in backend functies de volledige error (incl. stack trace) loggen via `console.error(error);`.
-*   **Stap 6: Voeg Frontend Input Validatie toe (Done)**
-    *   **Doel:** Voorkom ongeldige API calls.
-    *   **Actie:** Prijsvalidatie (non-negatief getal) toegevoegd in `ingredientView.js`.
-*   **Stap 7: Refactor Backend Utilities (`costUtils.js`) (Done)**
-    *   **Doel:** Verbeter structuur/onderhoudbaarheid.
-    *   **Actie:** `costUtils.js` opgesplitst in `unitUtils.js` (parsing/normalisatie/conversie) en `aiCostUtils.js` (AI helpers & extractie). Oude/redundante helpers verwijderd.
-*   **Stap 8: Refactor Backend Hoofdlogica (`getCostBreakdown.js`) (Done)**
-    *   **Doel:** Verbeter leesbaarheid.
-    *   **Actie:** Logica voor DB-only, AI-only, en Hybrid scenario's geëxtraheerd naar interne helper functies binnen `getCostBreakdown.js`.
+*   **Stap 6: Verify and Refine Backend GCF Triggers**
+    *   Ensure all Netlify functions correctly call GCFs and handle environment variables for GCF URLs.
+    *   Decide on the fate of `/api/getConfig`.
+*   **Stap 7: Enhance Backend Logging**
+    *   Implement detailed server-side logging for all Netlify Functions and GCFs.
+*   **Stap 8: Consider Supabase Realtime for Image Updates**
+    *   For `IngredientDbView.vue` and `GenerateView.vue` (broodje visualization), explore Supabase Realtime to update the UI instantly when an `image_url` changes in the database, instead of relying on manual refresh or assumptions about GCF completion time.
 
-**Fase 3: Geavanceerde Optimalisatie & Features (Next)**
+**Fase 3: Testing & Optimization**
 
-*   **Stap 9: Implementeer OpenAI Request Caching (Server-side) (Done)**
-    *   **Doel:** Verminder onnodige OpenAI calls en kosten.
-    *   **Actie:** Database caching geïmplementeerd via `cacheUtils.js` en `openai_cache` tabel. Functies `generateRecipe`, `refineRecipe`, en AI helpers in `aiCostUtils` checken nu de cache en slaan nieuwe resultaten op.
-*   **Stap 10: Implementeer Asynchrone Beeldgeneratie Ingredienten (Done)**
-    *   **Doel:** Voeg afbeeldingen toe aan ingrediënten zonder de UI te blokkeren.
-    *   **Actie:** Setup `generateIngredientImage` GCF met CORS. Frontend (`ingredientView.js`) triggert GCF *direct* via `fetch` na succesvolle toevoeging/update via `/api/addIngredient` of `/api/updateIngredient`. GCF updatet `image_url` in Supabase `ingredients` tabel. `/api/getConfig` levert GCF URL aan frontend.
-*   **Stap 11: Verplaats Recept Generatie naar GCF (Done)**
-    *   **Doel:** Los Netlify timeout op voor recept generatie.
-    *   **Actie:** Nieuwe GCF `generateBroodjeRecipe` gemaakt met OpenAI call, caching, en DB insert. Frontend roept deze GCF nu direct aan via URL verkregen van `/api/getConfig`. Oude `/api/generateRecipe` Netlify functie verwijderd.
-*   **Stap 12 (Voorheen deel van Stap 10): Test/Verbeter Image Display & Voeg Features Toe (Next)**
-    *   **Doel:** Afronden image functionaliteit en UI verbeteren.
-    *   **Actie:** Testen image display in `getCostBreakdown`, evt. placeholders toevoegen voor missende/ladende images. Implementeer "Visualiseer Broodje" knop/workflow (nieuwe GCF `visualizeBroodje`, nieuwe DB kolom `broodje_image_url`, aanpassing `/api/getConfig`, frontend logica). Vervang `confirm()` door custom modal. Overweeg strengere frontend input validatie.
+*   **Stap 9: Implement Unit & E2E Tests**
+*   **Stap 10: Performance Review & Optimization**
+    *   Review Vue app bundle size, component rendering performance.
+    *   Monitor AI call costs and caching effectiveness.

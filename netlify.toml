@@ -1,6 +1,12 @@
 [build]
-  publish = "frontend"
-  functions = "netlify/functions"
+      # Commando om de productie build te maken
+      command = "npm run build"
+      # Map waar de Vue app code staat (relatief t.o.v. root)
+      base    = "broodjes-app-vue"
+      # Map waar de gebouwde bestanden komen (relatief t.o.v. base)
+      publish = "dist"
+      # Map met Netlify Functions (relatief t.o.v. root)
+      functions = "netlify/functions"
 
 # Declare external modules needed by functions
 [functions]
@@ -24,4 +30,34 @@
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
+  status = 200
+
+[dev]
+  # Commando om de dev server te starten (wordt uitgevoerd in 'base' map)
+  command = "npm run dev"
+  # Poort waarop de Vite dev server draait (BELANGRIJK: pas aan indien nodig!)
+  targetPort = 5173
+  # Poort waarop netlify dev zelf draait (standaard 8888)
+  # port = 8888 # Kan meestal weggelaten worden
+  # Framework hint voor Netlify Dev
+  framework = "#vite"
+  # Map met Netlify Functions (relatief t.o.v. root)
+  functions = "netlify/functions"
+  # Zorg dat de 'publish' map ook hier correct is ingesteld voor dev proxy
+  # Hoewel Vite dev server assets direct serveert, kan dit helpen bij consistentie.
+  # De `targetPort` is belangrijker voor Vite.
+  # publish = "broodjes-app-vue/dist" # Kan vaak weg voor Vite, `targetPort` is key.
+
+# Redirect voor API calls naar Netlify Functions
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# Redirect voor Vue Router (Single Page Application)
+# Dit zorgt ervoor dat directe navigatie naar subpaden (bv. /recepten)
+# en pagina refreshes correct werken.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
   status = 200
