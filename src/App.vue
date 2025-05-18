@@ -62,7 +62,7 @@ onMounted(() => {
 // Verwijder de functie van het window object bij het unmounten
 onUnmounted(() => {
   if (window.displayGlobalModal === displayModal) {
-    delete window.displayGlobalModal;
+    (window as any).displayGlobalModal = undefined; // Or ensure Window interface is extended
   }
 });
 </script>
