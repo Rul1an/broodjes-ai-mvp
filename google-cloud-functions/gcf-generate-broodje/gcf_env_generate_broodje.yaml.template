@@ -1,0 +1,7 @@
+# Environment variables for gcf-generate-broodje GCF
+# IMPORTANT: Copy this file to gcf_env_generate_broodje.yaml and replace placeholder values with your actual secrets before deploying!
+SUPABASE_URL: "YOUR_SUPABASE_URL_HERE"
+SUPABASE_SERVICE_KEY: "YOUR_SUPABASE_SERVICE_KEY_HERE"
+OPENAI_API_KEY: "YOUR_OPENAI_API_KEY_HERE"
+# Optional: Set specific origin instead of '*', e.g.:
+# ALLOWED_ORIGIN: "https://your-domain.netlify.app"
