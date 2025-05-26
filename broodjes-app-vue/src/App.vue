@@ -3,13 +3,15 @@
     <header>
       <h1>Broodjes AI App met Vue</h1>
       <nav>
-        <button @click="activeTab = 'generate'" :class="{ active: activeTab === 'generate' }">Nieuw Recept</button>
-        <button @click="activeTab = 'list'" :class="{ active: activeTab === 'list' }">Opgeslagen Recepten</button>
+        <router-link to="/" :class="{ active: route.name === 'Generate' }">Nieuw Recept</router-link>
+        <router-link to="/recepten" :class="{ active: route.name === 'Recipes' }">Opgeslagen Recepten</router-link>
+        <router-link to="/ingredienten" :class="{ active: route.name === 'Ingredients' }">Ingrediënten</router-link>
       </nav>
     </header>
     <main>
-      <GenerateView v-if="activeTab === 'generate'" />
-      <RecipeListView v-else-if="activeTab === 'list'" />
+      <ErrorBoundary>
+        <router-view />
+      </ErrorBoundary>
     </main>
     <footer>
       <p>&copy; 2024 Broodjes App Inc.</p>
@@ -27,13 +29,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
-import GenerateView from './components/GenerateView.vue';
-import RecipeListView from './components/RecipeListView.vue';
+import { useRoute } from 'vue-router';
 import ImageModal from './components/ImageModal.vue';
+import ErrorBoundary from './components/ErrorBoundary.vue';
 
-type ActiveTab = 'generate' | 'list';
-
-const activeTab = ref<ActiveTab>('generate');
+// Get current route for navigation highlighting
+const route = useRoute();
 
 // Data voor de modal
 const showModal = ref<boolean>(false);
@@ -43,7 +44,7 @@ const modalTitle = ref<string>('');
 // Type voor de globale window functie
 declare global {
   interface Window {
-    displayGlobalModal: (imageUrl: string, title: string) => void;
+    displayGlobalModal?: (imageUrl: string, title: string) => void;
   }
 }
 
@@ -67,83 +68,124 @@ onUnmounted(() => {
 });
 </script>
 
-<style>
-/* Bestaande stijlen hier */
+<style scoped>
+/* App-specific styles using design system */
 #app-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: var(--spacing-xl);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 header {
-  background-color: #4CAF50;
-  color: white;
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-xl);
   text-align: center;
+  box-shadow: var(--shadow-md);
 }
 
 header h1 {
-  margin: 0 0 15px 0;
-  font-size: 2.2em;
+  margin: 0 0 var(--spacing-lg) 0;
+  font-size: var(--font-3xl);
+  font-weight: var(--font-bold);
 }
 
 nav {
   display: flex;
   justify-content: center;
-  gap: 10px;
-  margin-top: 15px;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+  flex-wrap: wrap;
 }
 
-nav button {
-  background-color: #45a049;
-  color: white;
+nav a {
+  background-color: var(--color-primary-hover);
+  color: var(--color-white);
   border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 1em;
-  transition: background-color 0.3s;
+  font-size: var(--font-md);
+  font-weight: var(--font-medium);
+  transition: all var(--transition-normal);
+  text-decoration: none;
+  display: inline-block;
+  min-width: 140px;
+  text-align: center;
 }
 
-nav button:hover {
+nav a:hover {
   background-color: #3d8b40;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
-nav button.active {
+nav a.active {
   background-color: #2e7d32;
-  font-weight: bold;
+  font-weight: var(--font-semibold);
+  box-shadow: var(--shadow-md);
 }
 
 main {
   min-height: 60vh;
-  margin-bottom: 20px;
+  margin-bottom: var(--spacing-xl);
 }
 
 footer {
   text-align: center;
-  padding: 20px;
-  background-color: #f5f5f5;
-  border-radius: 8px;
-  margin-top: 20px;
+  padding: var(--spacing-xl);
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  margin-top: var(--spacing-xl);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
 }
 
-/* Responsieve aanpassingen */
+/* Responsive design using design system breakpoints */
 @media (max-width: 768px) {
-  header h1 {
-    font-size: 1.8em;
+  #app-container {
+    padding: var(--spacing-lg);
   }
-  
+
+  header {
+    padding: var(--spacing-lg);
+  }
+
+  header h1 {
+    font-size: var(--font-2xl);
+    margin-bottom: var(--spacing-md);
+  }
+
   nav {
     flex-direction: column;
     align-items: center;
+    gap: var(--spacing-sm);
   }
-  
-  nav button {
+
+  nav a {
     width: 80%;
-    margin: 5px 0;
+    margin: var(--spacing-xs) 0;
+    min-width: auto;
+  }
+
+  main {
+    margin-bottom: var(--spacing-lg);
+  }
+
+  footer {
+    padding: var(--spacing-lg);
+    margin-top: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 480px) {
+  nav a {
+    width: 90%;
+    font-size: var(--font-sm);
+    padding: var(--spacing-sm) var(--spacing-lg);
   }
 }
 </style>
