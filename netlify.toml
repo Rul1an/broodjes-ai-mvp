@@ -1,6 +1,6 @@
 [build]
-      # Commando om de productie build te maken
-      command = "npm run build"
+      # Commando om de productie build te maken - with dependency fix
+      command = "rm -rf node_modules package-lock.json && npm install && npm run build"
       # Map waar de Vue app code staat (relatief t.o.v. root)
       base    = "broodjes-app-vue"
       # Map waar de gebouwde bestanden komen (relatief t.o.v. base)
