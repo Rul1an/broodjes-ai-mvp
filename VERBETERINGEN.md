@@ -336,4 +336,13 @@ CREATE TABLE recipe_tags (
 - ✅ Netlify Build: Succesvol - deployment werkt weer
 - ✅ Push Successful: Commit 24e8330c naar Broodjes-ai-v2 branch
 
-**Volgende sessie:** Live testing op productie URL en performance monitoring.
+**Rollup/Vite Dependency Fix (Mei 25, 2025 - 19:25):**
+- ✅ Rollup Linux Module: Fixed "@rollup/rollup-linux-x64-gnu" missing module error
+- ✅ Vite Downgrade: Van 6.2.4 naar 5.4.8 voor stabiliteit en compatibiliteit
+- ✅ Build Command: Updated netlify.toml met dependency cleanup process
+- ✅ Package Lock: Removed conflicting package-lock.json en node_modules
+- ✅ DevTools Plugin: Updated vite-plugin-vue-devtools naar compatibele versie
+- ✅ Local Build Test: Volledig succesvol (540ms build time)
+- ✅ Deploy Ready: Commit 6176cb78 gepusht naar GitHub
+
+**Volgende sessie:** Netlify auto-deploy verification en live testing op productie URL.
