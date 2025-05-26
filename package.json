@@ -4,7 +4,7 @@
     "description": "Een MVP voor een broodjes-app waarmee je recepten kunt genereren met behulp van AI.",
     "main": "index.js",
     "scripts": {
-        "dev": "netlify dev"
+        "dev": "cd broodjes-app-vue && npm run dev"
     },
     "repository": {
         "type": "git",

@@ -1,6 +1,6 @@
+import vue from '@vitejs/plugin-vue';
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
-import vue from '@vitejs/plugin-vue';
 import vueDevTools from 'vite-plugin-vue-devtools';
 
 // https://vite.dev/config/
@@ -34,10 +34,10 @@ export default defineConfig(({ mode }) => {
 
     // Server configuratie voor development
     server: {
-      port: parseInt(env.VITE_APP_PORT || '3000', 10),
-      open: true, // Open de browser automatisch
+      port: parseInt(env.VITE_APP_PORT || '5174', 10),
+      open: false, // Don't open browser automatically for Netlify dev
       cors: true, // Sta CORS toe
-      strictPort: true, // Stop als de poort in gebruik is
+      strictPort: false, // Allow fallback to other ports
     },
 
     // Build configuratie
