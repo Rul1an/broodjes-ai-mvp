@@ -2,7 +2,22 @@
 
 ## 🔴 KRITIEKE FIXES (Prioriteit 1 - Deze week)
 
-### ❌ 1. Database Schema Reparatie (URGENT - NIET VOLLEDIG OPGELOST)
+### ✅ 1. TypeScript Build Errors - OPGELOST (Mei 25, 2025)
+**Probleem:** Netlify build failing door TypeScript compilation errors
+**Impact:** Geen deployment mogelijk naar productie
+**Fouten waren:**
+- Missing module '@/composables' en '@/composables/useCostBreakdown'
+- Unused 'computed' import in AdvancedCostDisplay.vue
+- Unused parameters in router scrollBehavior function
+**Oplossing:**
+- ✅ Created useCostBreakdown.ts composable
+- ✅ Created useMarkdown.ts composable
+- ✅ Added composables/index.ts for proper exports
+- ✅ Removed unused imports and parameters
+**Status:** ✅ VOLLEDIG OPGELOST - Build succeeds, deployment werkt
+**Commit:** 24e8330c - "Fix TypeScript compilation errors for production build"
+
+### ❌ 2. Database Schema Reparatie (URGENT - NIET VOLLEDIG OPGELOST)
 **Probleem:** `generated_recipe` column ontbreekt in `async_tasks` table
 **Impact:** Database fouten bij recipe opslag: "Could not find the 'generated_recipe' column of 'async_tasks' in the schema cache"
 **Status:** Database kolom toegevoegd via migration, maar Supabase cache nog niet ge-update
@@ -14,7 +29,7 @@ ALTER TABLE async_tasks ADD COLUMN IF NOT EXISTS generated_recipe JSONB;
 ```
 **Geschatte tijd:** 30 minuten + cache refresh
 
-### 2. Package.json Dev Script Fix
+### 3. Package.json Dev Script Fix
 **Probleem:** `package.json` dev script wijst naar verkeerde directory
 **Impact:** `netlify dev` werkt niet correct vanaf root
 **Oplossing:**
@@ -27,7 +42,7 @@ ALTER TABLE async_tasks ADD COLUMN IF NOT EXISTS generated_recipe JSONB;
 ```
 **Geschatte tijd:** 5 minuten
 
-### ✅ 3. Unit Conversie Verbeteringen (GEDEELTELIJK OPGELOST)
+### ✅ 4. Unit Conversie Verbeteringen (GEDEELTELIJK OPGELOST)
 **Probleem:** Ontbrekende conversies tussen g↔plak en handvol↔g
 **Impact:** Cost calculation faalt voor veelgebruikte ingrediënten
 **Status:** Veel verbeteringen gemaakt, maar nog steeds enkele conversie fouten:
@@ -37,7 +52,7 @@ ALTER TABLE async_tasks ADD COLUMN IF NOT EXISTS generated_recipe JSONB;
 **Volgende stap:** Normalisatie van ingrediënt beschrijvingen verbeteren
 **Geschatte tijd:** 1 uur extra
 
-### ✅ 4. Function Loading Issues (OPGELOST - Mei 25, 2025)
+### ✅ 5. Function Loading Issues (OPGELOST - Mei 25, 2025)
 **getCostBreakdown Function Error:**
 - **Probleem:** "lambdaFunc[lambdaHandler] is not a function"
 - **Oplossing:** Duplicate functions verwijderd uit broodjes-app-vue/netlify directory
@@ -52,7 +67,7 @@ ALTER TABLE async_tasks ADD COLUMN IF NOT EXISTS generated_recipe JSONB;
 
 ## 🟡 PERFORMANCE VERBETERINGEN (Prioriteit 2 - Komende 2 weken)
 
-### ✅ 4. Error Boundaries & Advanced Cost Analysis (NIEUW VOLTOOID - Mei 25, 2025)
+### ✅ 6. Error Boundaries & Advanced Cost Analysis (NIEUW VOLTOOID - Mei 25, 2025)
 **Error Boundary Component:**
 - **Feature:** Comprehensive error handling met user-friendly messages
 - **Implementatie:** ErrorBoundary.vue component met retry functionaliteit
@@ -66,7 +81,7 @@ ALTER TABLE async_tasks ADD COLUMN IF NOT EXISTS generated_recipe JSONB;
 - **Features:** Duurzaamheids- en gezondheidsscore, supermarkt prijsvergelijking
 - **Status:** ✅ Volledig geïmplementeerd en klaar voor integratie
 
-### ✅ 5. Supabase Realtime Implementatie (VOLTOOID)
+### ✅ 7. Supabase Realtime Implementatie (VOLTOOID)
 **Probleem:** Polling systeem voor task status is inefficiënt
 **Voordeel:** Real-time updates, betere UX, minder API calls
 **Status:** ✅ Volledig geïmplementeerd met composables:
@@ -75,7 +90,7 @@ ALTER TABLE async_tasks ADD COLUMN IF NOT EXISTS generated_recipe JSONB;
 - ✅ Frontend integration met fallback naar polling
 **Resultaat:** Real-time updates werken perfect, efficiëntere resource usage
 
-### 5. Error Boundaries voor Vue Components
+### 8. Error Boundaries voor Vue Components
 **Probleem:** Onafgehandelde errors crashen de hele app
 **Voordeel:** Betere error handling en gebruikerservaring
 **Implementatie:**
@@ -91,7 +106,7 @@ ALTER TABLE async_tasks ADD COLUMN IF NOT EXISTS generated_recipe JSONB;
 ```
 **Geschatte tijd:** 4 uur
 
-### 6. Function Bundling Optimalisatie
+### 9. Function Bundling Optimalisatie
 **Probleem:** Cold starts en frequente reloads tijdens development
 **Voordeel:** Snellere function execution
 **Implementatie:** Webpack/esbuild bundling voor Netlify functions
@@ -99,7 +114,7 @@ ALTER TABLE async_tasks ADD COLUMN IF NOT EXISTS generated_recipe JSONB;
 
 ## 🟢 FEATURE UITBREIDINGEN (Prioriteit 3 - Komende maand)
 
-### 7. Geavanceerde Cost Display
+### 10. Geavanceerde Cost Display
 **Huidige staat:** Basis kosten per ingrediënt
 **Uitbreiding:**
 - Kosten per portie
@@ -116,7 +131,7 @@ const costBreakdown = {
 ```
 **Geschatte tijd:** 3 dagen
 
-### 8. AI-Powered Ingredient Suggestions
+### 11. AI-Powered Ingredient Suggestions
 **Functionaliteit:** Suggesties tijdens recipe generatie
 **Implementatie:**
 ```javascript
@@ -133,7 +148,7 @@ const getSuggestions = async (currentIngredients) => {
 ```
 **Geschatte tijd:** 2 dagen
 
-### 9. Recipe Export Functionaliteit
+### 12. Recipe Export Functionaliteit
 **Features:**
 - PDF export
 - Print-vriendelijke versie
@@ -142,7 +157,7 @@ const getSuggestions = async (currentIngredients) => {
 **Implementatie:** jsPDF + custom templates
 **Geschatte tijd:** 1 week
 
-### 10. Recipe Categorisatie Systeem
+### 13. Recipe Categorisatie Systeem
 **Features:**
 - Tags (vegetarisch, gezond, budget, etc.)
 - Filtering op categorie
@@ -161,7 +176,7 @@ CREATE TABLE recipe_tags (
 
 ## 🚀 GEAVANCEERDE FEATURES (Prioriteit 4 - Lange termijn)
 
-### 11. User Authentication & Profiles
+### 14. User Authentication & Profiles
 **Features:**
 - User accounts
 - Persoonlijke recipe verzamelingen
@@ -170,7 +185,7 @@ CREATE TABLE recipe_tags (
 **Tech stack:** Supabase Auth + Vue composables
 **Geschatte tijd:** 2 weken
 
-### 12. Recipe Sharing & Community
+### 15. Recipe Sharing & Community
 **Features:**
 - Recipe delen tussen gebruikers
 - Rating systeem
@@ -179,7 +194,7 @@ CREATE TABLE recipe_tags (
 **Implementatie:** Supabase RLS + social features
 **Geschatte tijd:** 3 weken
 
-### 13. Mobile App (PWA → Native)
+### 16. Mobile App (PWA → Native)
 **Voordelen:**
 - Offline recipe toegang
 - Camera integratie voor ingredient herkenning
@@ -187,7 +202,7 @@ CREATE TABLE recipe_tags (
 **Tech stack:** Capacitor/Ionic of React Native
 **Geschatte tijd:** 2 maanden
 
-### 14. AI Model Fine-tuning
+### 17. AI Model Fine-tuning
 **Doel:** Custom sandwich recipe model
 **Voordelen:**
 - Betere Nederlandse context
@@ -312,5 +327,13 @@ CREATE TABLE recipe_tags (
 - ✅ Push Successful: Commit c22cda38 naar Broodjes-ai-v2 branch
 - ✅ Netlify Auto-Deploy: Actief en werkend via GitHub integration
 - ✅ Production Ready: Alle advanced features live beschikbaar
+
+**TypeScript Build Fix (Mei 25, 2025 - 19:05):**
+- ✅ Build Errors: Alle TypeScript compilation errors opgelost
+- ✅ Missing Composables: useCostBreakdown.ts en useMarkdown.ts aangemaakt
+- ✅ Module Exports: composables/index.ts toegevoegd voor proper imports
+- ✅ Code Cleanup: Unused imports en parameters verwijderd
+- ✅ Netlify Build: Succesvol - deployment werkt weer
+- ✅ Push Successful: Commit 24e8330c naar Broodjes-ai-v2 branch
 
 **Volgende sessie:** Live testing op productie URL en performance monitoring.
